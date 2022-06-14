@@ -64,6 +64,7 @@ def simulate_interaction(horizon=200):
     xh_traj = np.zeros((4, horizon))
     xr_traj = np.zeros((4, horizon))
     h_goals = np.zeros((4, horizon))
+    h_goal_reached = np.zeros((1, horizon))
 
     fig, ax = plt.subplots()
 
@@ -72,6 +73,9 @@ def simulate_interaction(horizon=200):
         xh_traj[:,[i]] = human.x
         xr_traj[:,[i]] = robot.x
         h_goals[:,[i]] = human.get_goal()
+        # check if human reached its goal
+        if np.linalg.norm(human.x - human.get_goal()) < 0.1:
+            h_goal_reached[:,i] = 1
 
         # take step
         uh = human.get_u(robot.x)
@@ -83,7 +87,7 @@ def simulate_interaction(horizon=200):
         xh = human.step(uh)
         xr = robot.step(ur)
 
-    return xh_traj, xr_traj, goals, h_goals, r_goal
+    return xh_traj, xr_traj, goals, h_goals, r_goal, h_goal_reached
 
 def create_dataset(n_trajectories=1):
     horizon = 200
@@ -93,9 +97,14 @@ def create_dataset(n_trajectories=1):
     all_goals = np.zeros((4, 3, 0))
     all_h_goals = np.zeros((4, horizon, 0))
     all_r_goals = np.zeros((4, 1, 0))
+    all_h_goal_reached = np.zeros((1, horizon, 0))
+
+    # labels
+    goal_reached = []
+    goal_idx = []
 
     for i in range(n_trajectories):
-        xh_traj, xr_traj, goals, h_goals, r_goal = simulate_interaction(horizon=horizon)
+        xh_traj, xr_traj, goals, h_goals, r_goal, h_goal_reached = simulate_interaction(horizon=horizon)
 
         # save trajectories
         all_xh_traj = np.dstack((all_xh_traj, xh_traj))
@@ -103,7 +112,24 @@ def create_dataset(n_trajectories=1):
         all_goals = np.dstack((all_goals, goals))
         all_h_goals = np.dstack((all_h_goals, h_goals))
         all_r_goals = np.dstack((all_r_goals, r_goal))
+        all_h_goal_reached = np.dstack((all_h_goal_reached, h_goal_reached))
+        # save whether goal was reached
+        goal_reached.append(h_goal_reached[0,-1])
+        # find index of goal
+        gg = h_goals[:,[-1]]
+        goal_idx.append(np.argmin(np.linalg.norm(goals - gg, axis=0)))
 
+    # process data
+
+    return all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, np.array(goal_reached), np.array(goal_idx)
+
+def save_data(path="./data/simulated_interactions.npz"):
+
+    all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, \
+        goal_reached, goal_idx = create_dataset(n_trajectories=1000)
+
+    # TODO: save data
+    
 
 if __name__ == "__main__":
     # np.random.seed(0)
