@@ -66,8 +66,6 @@ def simulate_interaction(horizon=200):
     h_goals = np.zeros((4, horizon))
     h_goal_reached = np.zeros((1, horizon))
 
-    fig, ax = plt.subplots()
-
     for i in range(horizon):
         # save data
         xh_traj[:,[i]] = human.x
@@ -121,16 +119,14 @@ def create_dataset(n_trajectories=1):
 
     # process data
 
-    return all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, np.array(goal_reached), np.array(goal_idx)
+    return all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, np.array(goal_reached), np.array(goal_idx), all_goals
 
 def save_data(path="./data/simulated_interactions.npz"):
 
     all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, \
-        goal_reached, goal_idx = create_dataset(n_trajectories=1000)
+        goal_reached, goal_idx, all_goals = create_dataset(n_trajectories=1000)
 
-    # TODO: save data
-    
+    np.savez(path, xh_traj=all_xh_traj, xr_traj=all_xr_traj, goal_reached=goal_reached, goal_idx=goal_idx, goals=all_goals)
 
 if __name__ == "__main__":
-    # np.random.seed(0)
-    create_dataset()
+    save_data()

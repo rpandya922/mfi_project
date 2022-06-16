@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass
 
 # dataclass for parameters of encoder
 @dataclass
@@ -13,8 +14,11 @@ class RNNParameters:
     dropout_rnn : float = 0.0
     bidirectional : bool = False
 
-    def __iter__(self):
-        return iter(astuple(self))
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def keys(self):
+        return self.__dict__.keys()
 
 @dataclass
 class AttentionParameters:
@@ -22,6 +26,12 @@ class AttentionParameters:
     source_embed_dim : int
     output_embed_dim : int
     bias : bool = False
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def keys(self):
+        return self.__dict__.keys()
 
 @dataclass
 class LinearParameters:
@@ -31,10 +41,16 @@ class LinearParameters:
     hidden_dim : int
     activation : str = "relu"
 
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def keys(self):
+        return self.__dict__.keys()
+
 class LinearModel(nn.Module):
     def __init__(self, in_dim, n_hidden, hidden_dim, out_dim, activation="relu"):
         super(LinearModel, self).__init__()
-        self.in_dim = input_dim
+        self.in_dim = in_dim
         self.n_hidden = n_hidden
         self.hidden_dim = hidden_dim
         self.out_dim = out_dim
@@ -46,16 +62,16 @@ class LinearModel(nn.Module):
         else:
             self.activation = nn.ReLU
 
-        if self.hidden_size < 1:
+        if self.hidden_dim < 1:
             self.linear = nn.Linear(self.in_dim, self.out_dim)
         else:
             layers = [nn.Linear(self.in_dim, self.hidden_dim), self.activation()]
-            for i in range(n_hidden)-1:
+            for i in range(n_hidden-1):
                 layers.append(nn.Linear(self.hidden_dim, self.hidden_dim))
                 layers.append(self.activation())
             layers.append(nn.Linear(self.hidden_dim, self.out_dim))
 
-            self.linear = nn.Sequential(layers)
+            self.linear = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.linear(x)
