@@ -121,12 +121,12 @@ def create_dataset(n_trajectories=1):
 
     return all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, np.array(goal_reached), np.array(goal_idx), all_goals
 
-def save_data(path="./data/simulated_interactions.npz"):
+def save_data(path="./data/simulated_interactions.npz", n_trajectories=1000):
 
     all_xh_traj, all_xr_traj, all_h_goals, all_r_goals, \
-        goal_reached, goal_idx, all_goals = create_dataset(n_trajectories=1000)
+        goal_reached, goal_idx, all_goals = create_dataset(n_trajectories=n_trajectories)
 
     np.savez(path, xh_traj=all_xh_traj, xr_traj=all_xr_traj, goal_reached=goal_reached, goal_idx=goal_idx, goals=all_goals)
 
 if __name__ == "__main__":
-    save_data()
+    save_data(path="./data/simulated_interactions2.npz", n_trajectories=200)

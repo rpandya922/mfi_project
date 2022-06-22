@@ -22,10 +22,9 @@ class RNNParameters:
 
 @dataclass
 class AttentionParameters:
-    input_embed_dim : int
-    source_embed_dim : int
-    output_embed_dim : int
-    bias : bool = False
+    embed_dim : int = 128
+    num_heads : int = 1
+    batch_first : bool = True
 
     def __getitem__(self, key):
         return self.__dict__[key]
@@ -143,39 +142,6 @@ class RNNEncoder(nn.Module):
             final_cells = final_cells.transpose(0, 1)
 
         return encoder_out, (final_hiddens, final_cells)
-
-
-class AttentionLayer(nn.Module):
-    def __init__(self, input_embed_dim, source_embed_dim, output_embed_dim, bias=False):
-        super(AttentionLayer, self).__init__()
-
-        self.input_proj = Linear(input_embed_dim, source_embed_dim, bias=bias)
-        self.output_proj = Linear(input_embed_dim + source_embed_dim, output_embed_dim, bias=bias)
-
-    def forward(self, input, source_hids, encoder_padding_mask=None):
-        # input: bsz x input_embed_dim
-        # source_hids: srclen x bsz x output_embed_dim
-
-        # x: bsz x output_embed_dim
-        x = self.input_proj(input)
-
-        # compute attention
-        attn_scores = (source_hids * x.unsqueeze(0)).sum(dim=2)
-
-        # don't attend over padding
-        if encoder_padding_mask is not None:
-            attn_scores = attn_scores.float().masked_fill_(
-                encoder_padding_mask,
-                float('-inf')
-            ).type_as(attn_scores)  # FP16 support: cast to float and back
-
-        attn_scores = F.softmax(attn_scores, dim=0)  # srclen x bsz
-
-        # sum weighted sources
-        x = (attn_scores.unsqueeze(2) * source_hids).sum(dim=0)
-        out = torch.cat((x, input), dim=1)
-        x = F.tanh(self.output_proj(out))
-        return x, attn_scores
 
 def LSTM(input_size, hidden_size, **kwargs):
     m = nn.LSTM(input_size, hidden_size, **kwargs)
