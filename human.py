@@ -1,10 +1,9 @@
 import numpy as np
 
+from agent import BaseAgent
 from dynamics import Dynamics
 
-import ipdb
-
-class Human():
+class Human(BaseAgent):
     def __init__(self, x0, dynamics : Dynamics, goals):
         self.x = x0
         self.dynamics = dynamics

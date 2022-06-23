@@ -50,8 +50,8 @@ class IntentionPredictor(nn.Module):
         plan_enc_out = self.plan_encoder(r_plan)[0]
 
         # compute attention
-        hist_enc_out, _ = self.hist_attn(hist_enc_out, hist_enc_out, hist_enc_out)
-        plan_enc_out, _ = self.plan_attn(plan_enc_out, plan_enc_out, plan_enc_out)
+        # hist_enc_out, _ = self.hist_attn(hist_enc_out, hist_enc_out, hist_enc_out)
+        # plan_enc_out, _ = self.plan_attn(plan_enc_out, plan_enc_out, plan_enc_out)
 
         # flatten and concat outputs
         hist_enc_out = torch.flatten(hist_enc_out, start_dim=1)

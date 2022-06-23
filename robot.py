@@ -1,13 +1,13 @@
 import numpy as np
 
+from agent import BaseAgent
 from dynamics import Dynamics
 
-import ipdb
-
-class Robot():
+class Robot(BaseAgent):
     def __init__(self, x0, dynamics : Dynamics, goal):
         self.x = x0
         self.dynamics = dynamics
+        # TODO: change this to take in a set of goals 
         self.goal = goal
         # TODO: set control limits
 
@@ -17,8 +17,14 @@ class Robot():
         self.k_phi = 0.1
         self.lambda0 = 10
 
+    def get_goal(self):
+        return self.goal
+
     def set_goal(self, goal):
         self.goal = goal
+
+    def set_goals(self, goals):
+        self.goals = goals
 
     def get_safe_control(self, xh, xr_prev, xh_prev, u_ref):
         """

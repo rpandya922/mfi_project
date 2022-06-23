@@ -2,7 +2,9 @@ import numpy as np
 from scipy.special import softmax
 import matplotlib.pyplot as plt
 
-from dynamics import DIDynamics
+from robot import Robot
+from human import Human
+from dynamics import Dynamics, DIDynamics
 
 class BayesEstimator():
     def __init__(self, thetas, dynamics, prior=None, beta=0.7):
@@ -43,10 +45,10 @@ class BayesEstimator():
 
         # consider the next state if each potential action was chosen
         next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
-        rs = np.array([-np.linalg.norm(state[[0,2]] - s[[0,2]]) for s in next_states])[:,None]
+        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
 
         # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
-        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:])[:,[0,2],:], axis=1)
+        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
         Q_vals = rs - opt_rewards
 
         # compute probability of choosing each action
@@ -60,13 +62,57 @@ class BayesEstimator():
 
         return new_belief
 
-if __name__ == "__main__":
+# TODO: is it better to have Human and BayesHuman inherit from a BaseHuman or just do it this way?
+class BayesHuman(Human):
+    def __init__(self, x0, dynamics : Dynamics, goals, belief : BayesEstimator):
+        super(BayesHuman, self).__init__(x0, dynamics, goals)
+        self.x = x0
+        self.dynamics = dynamics
+        self.goals = goals
+        self.belief = belief
+
+        # goal is initially set randomly
+        g_idx = np.random.randint(self.goals.shape[1])
+        self.goal = self.goals[:,[g_idx]]
+
+        # TODO: set control limits
+
+    def get_goal(self):
+        r_goal = self.goals[:,[np.argmax(self.belief.belief)]]
+
+        # if the estimated goal of the robot is the same as the human's current goal, change the goal
+        if np.linalg.norm(r_goal - self.goal) <= 1e-3:
+            # goals are the same, change the human's goal
+            g_idx = np.random.randint(self.goals.shape[1])
+            self.goal = self.goals[:,[g_idx]]
+        
+        return self.goal
+
+    def update_belief(self, robot_x, robot_u):
+        self.belief.update_belief(robot_x, robot_u)
+
+# TODO: is it better to have Robot and BayesRobot inherit from a BaseRobot or just do it this way?
+class BayesRobot(Robot):
+    def __init__(self, x0, dynamics : Dynamics, goals, belief : BayesEstimator):
+        super(BayesRobot, self).__init__(x0, dynamics, goals)
+        self.x = x0
+        self.dynamics = dynamics
+        self.goals = goals
+        self.belief = belief
+
+        # goal is initially set randomly
+        g_idx = np.random.randint(self.goals.shape[1])
+        self.goal = self.goals[:,[g_idx]]
+
+    def update_belief(self, human_x, human_u):
+        self.belief.update_belief(human_x, human_u)
+
+def test_inference():
     # np.random.seed(0)
     goals = np.random.uniform(size=(4, 2))*20 - 10
     goals[[1,3],:] = np.zeros((2, 2))
     print(goals)
     ts = 0.05
-    # TODO: make Bayesian human object that's doing inference 
     dynamics = DIDynamics(ts)
     xh = np.zeros((4,1))
     g_idx = 1
@@ -96,3 +142,50 @@ if __name__ == "__main__":
 
         print(b.belief)
         # input(": ")
+
+if __name__ == "__main__":
+    np.random.seed(1)
+    # randomly initialize xh0, xr0, goals
+    xh0 = np.random.uniform(size=(4, 1))*20 - 10
+    xh0[[1,3]] = np.zeros((2, 1))
+    xr0 = np.random.uniform(size=(4, 1))*20 - 10
+    xr0[[1,3]] = np.zeros((2, 1))
+    goals = np.random.uniform(size=(4, 3))*20 - 10
+    goals[[1,3],:] = np.zeros((2, 3))
+
+    ts = 0.05
+    h_dynamics = DIDynamics(ts)
+    r_dynamics = DIDynamics(ts)
+
+    h_belief = BayesEstimator(goals, r_dynamics, beta=20)
+    human = BayesHuman(xh0, h_dynamics, goals, h_belief)
+
+    r_belief = BayesEstimator(goals, h_dynamics, beta=20)
+    robot = BayesRobot(xr0, r_dynamics, goals, r_belief)
+
+
+    fig, ax = plt.subplots()
+
+    for t in range(100):
+        # plot human and goals
+        ax.cla()
+        ax.scatter(human.x[0], human.x[2])
+        ax.scatter(robot.x[0], robot.x[2])
+        ax.scatter(goals[0], goals[2])
+        ax.set_xlim(-10, 10)
+        ax.set_ylim(-10, 10)
+        plt.pause(0.01)
+
+        # human & robot decide on actions
+        uh = human.get_u(robot.x)
+        ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+
+        # humans and robot observe each others' actions and update beliefs
+        human.update_belief(robot.x, ur)
+        robot.update_belief(human.x, uh)
+
+        # human and robot move
+        human.step(uh)
+        robot.step(ur)
+
+    plt.show()
