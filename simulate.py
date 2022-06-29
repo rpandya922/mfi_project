@@ -129,4 +129,5 @@ def save_data(path="./data/simulated_interactions.npz", n_trajectories=1000):
     np.savez(path, xh_traj=all_xh_traj, xr_traj=all_xr_traj, goal_reached=goal_reached, goal_idx=goal_idx, goals=all_goals)
 
 if __name__ == "__main__":
-    save_data(path="./data/simulated_interactions2.npz", n_trajectories=200)
+    save_data(path="./data/simulated_interactions.npz")
+    # save_data(path="./data/simulated_interactions2.npz", n_trajectories=200)

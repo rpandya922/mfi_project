@@ -163,7 +163,6 @@ if __name__ == "__main__":
     r_belief = BayesEstimator(goals, h_dynamics, beta=20)
     robot = BayesRobot(xr0, r_dynamics, goals, r_belief)
 
-
     fig, ax = plt.subplots()
 
     for t in range(100):
