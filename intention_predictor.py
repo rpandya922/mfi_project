@@ -45,11 +45,14 @@ class IntentionPredictor(nn.Module):
         goals : the possible goals of the human
         """
         
+        # TODO: check for gradients through RNN
         # run through sequences RNN encoder
+        seq_hist.retain_grad()
         hist_enc_out = self.hist_encoder(seq_hist)[0]
         plan_enc_out = self.plan_encoder(r_plan)[0]
 
         # compute attention
+        # TODO: torch 1.7.0 doesn't support batch_first for attention layer
         # hist_enc_out, _ = self.hist_attn(hist_enc_out, hist_enc_out, hist_enc_out)
         # plan_enc_out, _ = self.plan_attn(plan_enc_out, plan_enc_out, plan_enc_out)
 
@@ -86,7 +89,7 @@ def create_model():
     attn_params = AttentionParameters(
                     embed_dim=128,
                     num_heads=1,
-                    batch_first=True
+                    # batch_first=True
                     )
 
     # create LinearParameters object

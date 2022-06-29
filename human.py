@@ -11,17 +11,16 @@ class Human(BaseAgent):
 
         # TODO: set control limits
 
-    def get_goal(self):
+    def get_goal(self, get_idx=False):
         # current goal will be the closest by Euclidean distance
         goal_xy = self.goals[[0,2],:]
-        try:
-            dists = np.linalg.norm(goal_xy-self.x[[0,2]], axis=0)
-        except:
-            ipdb.set_trace()
+        dists = np.linalg.norm(goal_xy-self.x[[0,2]], axis=0)
 
         min_i = np.argmin(dists)
 
         goal = self.goals[:,[min_i]]
+        if get_idx:
+            return goal, min_i
         return goal
 
     def set_goals(self, goals):

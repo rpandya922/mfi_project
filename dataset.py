@@ -2,6 +2,9 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
+
 class SimTrajDataset(Dataset):
     def __init__(self, data, history : int = 5, horizon : int = 5, mode : str = "train"):
         self.mode = mode
@@ -31,10 +34,10 @@ class SimTrajDataset(Dataset):
                 xr_future = xr_traj[:,j:j+horizon,i]
 
                 # LSTM expects input of size (sequence length, # features) [batch size dealth with separately]
-                input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float())
-                robot_future.append(torch.tensor(xr_future.T).float())
-                input_goals.append(torch.tensor(goals[:,:,i]).float())
-                labels.append(chosen_goal_idx[i])
+                input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device))
+                robot_future.append(torch.tensor(xr_future.T).float().to(device))
+                input_goals.append(torch.tensor(goals[:,:,i]).float().to(device))
+                labels.append(torch.tensor(chosen_goal_idx[i]).to(device))
 
         self.input_traj = input_traj
         self.robot_future = robot_future

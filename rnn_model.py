@@ -24,7 +24,7 @@ class RNNParameters:
 class AttentionParameters:
     embed_dim : int = 128
     num_heads : int = 1
-    batch_first : bool = True
+    # batch_first : bool = True
 
     def __getitem__(self, key):
         return self.__dict__[key]

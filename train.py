@@ -8,10 +8,16 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset
 
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
+print(f"Training with device {device}")
+
 def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
     all_train_loss = []
     all_val_loss = []
     batch_size = trainset_loader.batch_size
+
+    loss = nn.CrossEntropyLoss(reduction="sum").to(device)
 
     iteration = 0
     for ep in tqdm(range(epoch)):
@@ -22,7 +28,6 @@ def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
             model_out = model(*data)
 
             # compute loss
-            loss = nn.CrossEntropyLoss(reduction="sum")
             output = loss(model_out, target)
             total_loss += output.item()
 
@@ -44,26 +49,42 @@ def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
 
     return all_train_loss, all_val_loss
 
+class FC(nn.Module):
+    def __init__(self, in_dim=72):
+        super(FC, self).__init__()
+        self.in_dim = in_dim
+        self.fc1 = nn.Linear(in_dim, 128)
+        self.fc2 = nn.Linear(128, 3)
+        self.relu = nn.ReLU()
+
+    def forward(self, x1, x2, x3):
+        x = torch.cat((x1.flatten(start_dim=1), x2.flatten(start_dim=1), x3.flatten(start_dim=1)), dim=1)
+        return self.fc2(self.relu(self.fc1(x)))
+
 if __name__ == "__main__":
     # load npz dataset file
     traj_data = np.load("./data/simulated_interactions.npz")
     dataset = SimTrajDataset(traj_data)
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     traj_data = np.load("./data/simulated_interactions2.npz")
     val_dataset = SimTrajDataset(traj_data)
-    val_loader = DataLoader(dataset, batch_size=32, shuffle=False)
+    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
 
     predictor = create_model()
+    # predictor = FC()
+    predictor = predictor.to(device)
     optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
-    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=20)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=2)
 
     # save model
-    torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor.pt")
+    # TODO: don't overwrite existing model, save into new file based on date/time
+    # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor.pt")
 
     plt.plot(all_train_loss, label="train")
     plt.plot(all_val_loss, label="val")
     plt.yscale("log")
     plt.legend()
-    plt.show()
+    # plt.show()
+    plt.savefig("./train_loss.png")
