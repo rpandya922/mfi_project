@@ -34,9 +34,9 @@ class SimTrajDataset(Dataset):
                 xr_future = xr_traj[:,j:j+horizon,i]
 
                 # LSTM expects input of size (sequence length, # features) [batch size dealth with separately]
-                input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device))
-                robot_future.append(torch.tensor(xr_future.T).float().to(device))
-                input_goals.append(torch.tensor(goals[:,:,i]).float().to(device))
+                input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device)) # shape (5,8)
+                robot_future.append(torch.tensor(xr_future.T).float().to(device)) # shape (5,4)
+                input_goals.append(torch.tensor(goals[:,:,i]).float().to(device)) # shape (4,3)
                 labels.append(torch.tensor(chosen_goal_idx[i]).to(device))
 
         self.input_traj = input_traj

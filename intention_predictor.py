@@ -47,7 +47,6 @@ class IntentionPredictor(nn.Module):
         
         # TODO: check for gradients through RNN
         # run through sequences RNN encoder
-        seq_hist.retain_grad()
         hist_enc_out = self.hist_encoder(seq_hist)[0]
         plan_enc_out = self.plan_encoder(r_plan)[0]
 
