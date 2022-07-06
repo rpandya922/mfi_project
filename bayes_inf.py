@@ -21,14 +21,15 @@ class BayesEstimator():
         self.belief = prior
 
         # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
-        n_actions = 16
-        angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
-        all_actions = []
-        for r in range(1, 20):
-            actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
-            all_actions.append(actions)
-
-        self.actions = np.vstack(all_actions)
+        # n_actions = 16
+        # angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
+        # all_actions = []
+        # for r in range(1, 20):
+        #     actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
+        #     all_actions.append(actions)
+        # self.actions = np.vstack(all_actions)
+        
+        self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
 
     def project_action(self, action):
         # passed-in action will be a column vector
@@ -49,6 +50,18 @@ class BayesEstimator():
 
         # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
         opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
+
+        # testing
+        # dists = []
+        # for s in next_states:
+        #     dd = []
+        #     for i in range(3):
+        #         t = self.thetas[:,[i]]
+        #         dd.append(np.linalg.norm(s[[0,2]] - t[[0,2]]))
+        #     dists.append(dd)
+        # dists = np.array(dists)
+        # assert np.sum(dists - opt_rewards) == 0 # passes
+
         Q_vals = rs - opt_rewards
 
         # compute probability of choosing each action
@@ -143,7 +156,7 @@ def test_inference():
         print(b.belief)
         # input(": ")
 
-if __name__ == "__main__":
+def full_simulation():
     np.random.seed(1)
     # randomly initialize xh0, xr0, goals
     xh0 = np.random.uniform(size=(4, 1))*20 - 10
@@ -164,6 +177,23 @@ if __name__ == "__main__":
     robot = BayesRobot(xr0, r_dynamics, goals, r_belief)
 
     fig, ax = plt.subplots()
+
+    # plotting robot belief
+    # ax.bar(range(len(r_belief.belief)), r_belief.belief, tick_label=['theta1', 'theta2', 'theta3'])
+    # ax.set_ylim(0, 1)
+    # ax.set_ylabel("P(theta)")
+    # plt.show()
+    # 1/0
+
+    # plotting possible actions
+    # ax.axis('equal')
+    # ax.scatter(r_belief.actions[:,0], r_belief.actions[:,1])
+
+    # ax.set_title("possible actions")
+    # ax.set_xlabel("u_1")
+    # ax.set_ylabel("u_2")
+    # plt.show()
+    # 1/0
 
     for t in range(100):
         # plot human and goals
@@ -186,5 +216,62 @@ if __name__ == "__main__":
         # human and robot move
         human.step(uh)
         robot.step(ur)
+
+    plt.show()
+
+if __name__ == "__main__":
+    np.random.seed(1)
+    # randomly initialize xh0, xr0, goals
+    xh0 = np.random.uniform(size=(4, 1))*20 - 10
+    xh0[[1,3]] = np.zeros((2, 1))
+    goals = np.random.uniform(size=(4, 3))*20 - 10
+    goals[[1,3],:] = np.zeros((2, 3))
+    h_goal_idx = 0
+    h_goal = goals[:,[h_goal_idx]]
+
+    ts = 0.05
+    h_dynamics = DIDynamics(ts)
+    human = Human(xh0, h_dynamics, goals)
+    r_belief = BayesEstimator(goals, h_dynamics, beta=1)
+    print(r_belief.belief)
+
+    fig, ax = plt.subplots()
+    # fig2, ax2 = plt.subplots()
+
+    # plotting possible actions
+    # ax.axis('equal')
+    # ax.scatter(r_belief.actions[:,0], r_belief.actions[:,1])
+    # ax.set_title("possible actions")
+    # ax.set_xlabel("u_1")
+    # ax.set_ylabel("u_2")
+    # plt.show()
+    # 1/0
+
+    for t in range(100):
+        # plot human and goals
+        ax.cla()
+        ax.scatter(human.x[0], human.x[2], s=200)
+        ax.scatter(goals[0], goals[2], c=['#3A637B', '#C4A46B', '#FF5A00'], s=200)
+        ax.set_xlim(-10, 10)
+        ax.set_ylim(-10, 10)
+        plt.pause(0.01)
+        # if t in [0, 33, 67, 99]:
+        #     ax2.cla()
+        #     ax2.bar(range(len(r_belief.belief)), r_belief.belief, tick_label=['theta1', 'theta2', 'theta3'],
+        #         color=['#3A637B', '#C4A46B', '#FF5A00'])
+        #     ax2.set_ylim(0, 1)
+        #     ax2.set_ylabel("P(theta)")
+        #     fig2.savefig(f"./data/belief_{t}.png")
+        #     fig.savefig(f"./data/human_{t}.png")
+
+        # human & robot decide on actions
+        uh = human.dynamics.get_goal_control(human.x, h_goal)
+
+        # robot observes human's action and update beliefs
+        r_belief.update_belief(human.x, uh)
+        print(r_belief.belief)
+
+        # human and robot move
+        human.step(uh)
 
     plt.show()
