@@ -8,8 +8,8 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = "cpu"
 print(f"Training with device {device}")
 
 def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
@@ -62,25 +62,26 @@ class FC(nn.Module):
         return self.fc2(self.relu(self.fc1(x)))
 
 if __name__ == "__main__":
+    horizon = 20
     # load npz dataset file
     traj_data = np.load("./data/simulated_interactions.npz")
-    dataset = SimTrajDataset(traj_data)
+    dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     traj_data = np.load("./data/simulated_interactions2.npz")
-    val_dataset = SimTrajDataset(traj_data)
+    val_dataset = SimTrajDataset(traj_data, horizon=horizon)
     val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
 
-    predictor = create_model()
+    predictor = create_model(horizon_len=horizon)
     # predictor = FC()
     predictor = predictor.to(device)
     optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
-    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=2)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=50)
 
     # save model
     # TODO: don't overwrite existing model, save into new file based on date/time
-    # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor.pt")
+    torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_plan20.pt")
 
     plt.plot(all_train_loss, label="train")
     plt.plot(all_val_loss, label="val")

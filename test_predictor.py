@@ -8,15 +8,19 @@ from robot import Robot
 from dynamics import DIDynamics
 from intention_predictor import IntentionPredictor, create_model
 
-def get_robot_plan(robot, horizon=5):
+def get_robot_plan(robot, horizon=5, return_controls=False):
     # ignore safe control for plan
     robot_x = robot.x
     robot_states = np.zeros((robot.dynamics.n, horizon))
+    robot_controls = np.zeros((robot.dynamics.m, horizon))
     for i in range(horizon):
         goal_u = robot.dynamics.get_goal_control(robot_x, robot.goal)
         robot_x = robot.dynamics.step(robot_x, goal_u)
         robot_states[:,[i]] = robot_x
+        robot_controls[:,[i]] = goal_u
 
+    if return_controls:
+        return robot_states, robot_controls
     return robot_states
 
 def get_empty_robot_plan(robot, horizon=5):

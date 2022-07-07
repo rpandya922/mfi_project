@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = "cpu"
 
 class SimTrajDataset(Dataset):
     def __init__(self, data, history : int = 5, horizon : int = 5, mode : str = "train"):

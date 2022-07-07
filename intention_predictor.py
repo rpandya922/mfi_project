@@ -63,7 +63,7 @@ class IntentionPredictor(nn.Module):
 
         return self.classifier(c_in)
 
-def create_model():
+def create_model(horizon_len=5):
     # TODO: figure out where this should be stored
     seq_len = 5
     state_dim = 4
@@ -93,7 +93,7 @@ def create_model():
 
     # create LinearParameters object
     fc_params = LinearParameters(
-                    in_dim=(128*seq_len*2 + state_dim*n_goals),
+                    in_dim=(128*seq_len + (128*horizon_len) + state_dim*n_goals),
                     out_dim=3,
                     n_hidden=2,
                     hidden_dim=128

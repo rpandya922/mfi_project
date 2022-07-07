@@ -6,6 +6,10 @@ import torch.nn as nn
 softmax = torch.nn.Softmax(dim=1)
 from torch.autograd.functional import jacobian, hessian
 import cyipopt as ipopt
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+from matplotlib.collections import LineCollection
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 from dynamics import DIDynamics
 from human import Human
@@ -14,6 +18,7 @@ from intention_predictor import create_model
 from test_predictor import get_robot_plan
 
 class MaxEntropyPredictionProblem(object):
+    # NOTE: unfinished and currently unused
     """
     Trajectory Optimization problem where the objective is to find the trajectory of the 
     human and robot that leads to a high-entropy prediction from the intention prediction network
@@ -57,7 +62,6 @@ class MaxEntropyPredictionProblem(object):
         self.xr_idx = xr_idx
         self.ur_idx = ur_idx
         
-        # TODO: add control constraints
         # total number of constraints
         m_const = n_human + n_robot + n_human*(k_hist-1) + n_robot*(k_robot-1)
 
@@ -206,7 +210,6 @@ class MaxEntropyPredictionProblem2(object):
         self.xr_idx = xr_idx
         self.ur_idx = ur_idx
         
-        # TODO: add control constraints
         # total number of constraints
         # should only need dynamics constrains 
         m_const = n_robot*k_plan
@@ -241,10 +244,11 @@ class MaxEntropyPredictionProblem2(object):
         goals = torch.tensor(goals).float().unsqueeze(0)
 
         probs = softmax(self.model(traj_hist, xr_plan, goals))
+        probs = probs + 1e-10
         logits = torch.log2(probs)
         entropy = -torch.sum(probs * logits)
 
-        return entropy.item()
+        return -entropy.item()
 
     # TODO: check that this and previous function give same numerical output
     def _torch_objective(self, x):
@@ -261,10 +265,11 @@ class MaxEntropyPredictionProblem2(object):
         goals = torch.tensor(goals).float().unsqueeze(0)
 
         probs = softmax(self.model(traj_hist, xr_plan, goals))
+        probs = probs + 1e-10
         logits = torch.log2(probs)
         entropy = -torch.sum(probs * logits)
 
-        return entropy
+        return -entropy
 
     def gradient(self, x):
         x_torch = torch.tensor(x).float()
@@ -352,11 +357,17 @@ def create_nlp(human, robot, model, k_hist, k_plan, xh_hist, xr_hist):
     n = problem.n_var
     m = problem.m_const
 
-    # TODO: create dynamically feasible first guess
-    x0 = np.zeros(n)
+    # create dynamically feasible first guess
+    xr_plan, ur_plan = get_robot_plan(robot, return_controls=True, horizon=k_plan)
+    xr_plan = xr_plan.T
+    ur_plan = ur_plan.T
+    x0 = np.hstack((xr_plan.flatten(), ur_plan.flatten()))
+
+    # x0 = np.zeros(n)
     lb = -np.ones(n) * np.inf
     ub = np.ones(n) * np.inf
 
+    # TODO: add control constraints
     cl = np.zeros(m)
     cu = np.zeros(m)
 
@@ -369,6 +380,8 @@ def create_nlp(human, robot, model, k_hist, k_plan, xh_hist, xr_hist):
             cl=cl,
             cu=cu
             )
+    # TODO: find option that sets constraint satisfaction tolerance
+    # nlp.addOption('constr_viol_tol', 1e-10)
     nlp.addOption('mu_strategy', 'adaptive')
     nlp.addOption('tol', 1e-7)
     return nlp, x0, problem
@@ -380,21 +393,46 @@ def process_model_input(xh_hist, xr_hist, xr_plan, goals):
 
     return traj_hist, xr_plan, goals
 
-if __name__ == "__main__":
-    model = create_model()
-    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor.pt"))
+def overlay_timesteps(ax, xh_traj, xr_traj, goals):
+    # human trajectory
+    points = xh_traj[[0,2],:].T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    ts = 0.05
-    horizon = 100
-    k_hist = 5
-    k_plan = 5
+    norm = plt.Normalize(0, 100)
+    lc = LineCollection(segments, cmap='Blues', norm=norm)
+    # Set the values used for colormapping
+    lc.set_array(np.arange(101))
+    lc.set_linewidth(2)
+    line = ax.add_collection(lc)
+    # fig.colorbar(line, ax=ax)
 
-    np.random.seed(0)
+    # robot trajectory
+    points = xr_traj[[0,2],:].T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    norm = plt.Normalize(0, 100)
+    lc = LineCollection(segments, cmap='Reds', norm=norm)
+    # Set the values used for colormapping
+    lc.set_array(np.arange(101))
+    lc.set_linewidth(2)
+    line = ax.add_collection(lc)
+
+    ax.scatter(goals[0], goals[2], c=['#3A637B', '#C4A46B', '#FF5A00'])
+
+    ax.set_ylim(-10, 10)
+    ax.set_xlim(-10, 10)
+
+
+def initialize_problem():
+    # create initial conditions for human and robot, construct objects
     # randomly initialize xh0, xr0, goals
     xh0 = np.random.uniform(size=(4, 1))*20 - 10
     xh0[[1,3]] = np.zeros((2, 1))
     xr0 = np.random.uniform(size=(4, 1))*20 - 10
     xr0[[1,3]] = np.zeros((2, 1))
+
+    # xh0 = np.array([[-2.5, 0.0, -5.0, 0.0]]).T
+    # xr0 = np.array([[0.0, 0.0, -5.0, 0.0]]).T
 
     goals = np.random.uniform(size=(4, 3))*20 - 10
     goals[[1,3],:] = np.zeros((2, 3))
@@ -405,20 +443,31 @@ if __name__ == "__main__":
     dynamics_r = DIDynamics(ts)
     robot = Robot(xr0, dynamics_r, r_goal)
 
-    model2 = FC()
+    # robot.dmin=0.5
+    
+    return human, robot, goals
 
-    # problem = MaxEntropyPredictionProblem(human, robot, model, k_hist, k_plan, xh0, xr0)
-    # x = np.random.uniform(size=problem.n_var)
-    # problem.objective(x)
-    # problem.constraints(x)
-    # problem.gradient(x)
+if __name__ == "__main__":
+    ts = 0.05
+    horizon = 100
+    k_hist = 5
+    k_plan = 20
 
+    model = create_model(horizon_len=k_plan)
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt"))
 
-    # TODO: forward simulate 5 timesteps to pass in data to this problem
+    np.random.seed(5)
+    human, robot, goals = initialize_problem()
+
+    # model2 = FC()
+
+    # forward simulate 5 timesteps to pass in data to this problem
     xh_traj = np.zeros((4, horizon))
     xr_traj = np.zeros((4, horizon))
     h_goals = np.zeros((4, horizon))
     h_goal_reached = np.zeros((1, horizon))
+
+    xr_plans = np.zeros((4, k_plan, horizon))
 
     for i in range(horizon):
         # save data
@@ -434,25 +483,48 @@ if __name__ == "__main__":
             xr_hist = xr_traj[:,i-k_hist+1:i+1]
 
             nlp, x0, problem = create_nlp(human, robot, model, k_hist, k_plan, xh_hist, xr_hist)
-            x, info = nlp.solve(x0)
+            nlp.addOption('print_level', 0)
+            x, info = nlp.solve(x0) 
+            if info['status'] == -13:
+                print(info)
 
             xr_plan = problem._get_xr(x)
+            ur_plan = problem._get_ur(x)
             goal_probs = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan, goals)))
 
-            xr_plan_nominal = get_robot_plan(robot).T
+            xr_plan_nominal = get_robot_plan(robot, horizon=k_plan).T
             goal_probs_nominal = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan_nominal, goals)))
 
-            import ipdb; ipdb.set_trace()
-            # TODO: plot trajectory using plt + acrl_report_plotting.py
-            fig, ax = plt.subplots()
-            break
+            print(goal_probs.detach().numpy(), goal_probs_nominal.detach().numpy())
+            xr_plans[:,:,i] = xr_plan.T
 
         # take step
         uh = human.get_u(robot.x)
         if i == 0:
             ur = robot.get_u(human.x, robot.x, human.x)
-        else:
+        elif i <= k_hist:
             ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
+        # else:
+        #     ur = ur_plan.T[:,[0]]
 
         xh = human.step(uh)
         xr = robot.step(ur)
+
+    # plot trajectory
+    fig, ax = plt.subplots()
+    overlay_timesteps(ax, xh_traj, xr_traj, goals)
+
+    for i in range(k_hist, horizon):
+        # robot planned trajectory
+        xr_plan = xr_plans[:,:,i]
+        points = xr_plan[[0,2],:].T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        norm = plt.Normalize(0, k_plan)
+        lc = LineCollection(segments, cmap='Purples', norm=norm)
+        # Set the values used for colormapping
+        lc.set_array(np.arange(k_plan+1))
+        lc.set_linewidth(2)
+        line = ax.add_collection(lc)
+
+    plt.show()
