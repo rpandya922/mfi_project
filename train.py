@@ -88,4 +88,4 @@ if __name__ == "__main__":
     plt.yscale("log")
     plt.legend()
     # plt.show()
-    plt.savefig("./train_loss.png")
+    plt.savefig("./data/train_loss.png")

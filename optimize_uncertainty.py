@@ -393,15 +393,15 @@ def process_model_input(xh_hist, xr_hist, xr_plan, goals):
 
     return traj_hist, xr_plan, goals
 
-def overlay_timesteps(ax, xh_traj, xr_traj, goals):
+def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", r_cmap="Reds"):
     # human trajectory
     points = xh_traj[[0,2],:].T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    norm = plt.Normalize(0, 100)
-    lc = LineCollection(segments, cmap='Blues', norm=norm)
+    norm = plt.Normalize(0, n_steps)
+    lc = LineCollection(segments, cmap=h_cmap, norm=norm, alpha=0.5)
     # Set the values used for colormapping
-    lc.set_array(np.arange(101))
+    lc.set_array(np.arange(n_steps+1))
     lc.set_linewidth(2)
     line = ax.add_collection(lc)
     # fig.colorbar(line, ax=ax)
@@ -410,10 +410,10 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals):
     points = xr_traj[[0,2],:].T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    norm = plt.Normalize(0, 100)
-    lc = LineCollection(segments, cmap='Reds', norm=norm)
+    norm = plt.Normalize(0, n_steps)
+    lc = LineCollection(segments, cmap=r_cmap, norm=norm)
     # Set the values used for colormapping
-    lc.set_array(np.arange(101))
+    lc.set_array(np.arange(n_steps+1))
     lc.set_linewidth(2)
     line = ax.add_collection(lc)
 
@@ -423,7 +423,7 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals):
     ax.set_xlim(-10, 10)
 
 
-def initialize_problem():
+def initialize_problem(ts=0.05):
     # create initial conditions for human and robot, construct objects
     # randomly initialize xh0, xr0, goals
     xh0 = np.random.uniform(size=(4, 1))*20 - 10
@@ -502,7 +502,7 @@ if __name__ == "__main__":
         uh = human.get_u(robot.x)
         if i == 0:
             ur = robot.get_u(human.x, robot.x, human.x)
-        elif i <= k_hist:
+        else: # i <= k_hist:
             ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
         # else:
         #     ur = ur_plan.T[:,[0]]

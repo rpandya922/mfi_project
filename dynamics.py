@@ -54,9 +54,9 @@ class DIDynamics(Dynamics):
         d = np.linalg.norm(x[[0,2]] - xr[[0,2]])
 
         # make sure d doesn't get to 0 (for numerical stability)
-        d = max(d, 1e-3)
-        if d > 5:
-            return np.zeros((self.m, 1))
+        d = max(d, 0.1)
+        # if d > 5:
+        #     return np.zeros((self.m, 1))
         u = (self.gamma / d**2) * self.K @ (x - xr)
 
         return u

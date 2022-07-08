@@ -1,21 +1,23 @@
+from tkinter import E
 import numpy as np
 
 from agent import BaseAgent
 from dynamics import Dynamics
 
 class Robot(BaseAgent):
-    def __init__(self, x0, dynamics : Dynamics, goal):
+    def __init__(self, x0, dynamics : Dynamics, goal, dmin=3, eta=10, k_phi=0.1, lambda0=10):
         self.x = x0
         self.dynamics = dynamics
         # TODO: change this to take in a set of goals 
         self.goal = goal
+        self.goals = np.array([goal])
         # TODO: set control limits
 
         # hyperparams for SSA
-        self.dmin = 3
-        self.eta = 10
-        self.k_phi = 0.1
-        self.lambda0 = 10
+        self.dmin = dmin
+        self.eta = eta
+        self.k_phi = k_phi
+        self.lambda0 = lambda0
 
     def get_goal(self):
         return self.goal
@@ -131,3 +133,8 @@ class Robot(BaseAgent):
     def step(self, u):
         self.x = self.dynamics.step(self.x, u)
         return self.x
+
+    def copy(self):
+        r = Robot(self.x, self.dynamics, self.goal, self.dmin, self.eta, self.k_phi, self.lambda0)
+        r.set_goals(self.goals)
+        return r
