@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from dynamics import DIDynamics
 from human import Human
+from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 
 def test_sim():
@@ -57,8 +58,10 @@ def simulate_interaction(horizon=200):
     r_goal = goals[:,[np.random.randint(0,3)]]
 
     dynamics_h = DIDynamics(ts)
-    human = Human(xh0, dynamics_h, goals)
     dynamics_r = DIDynamics(ts)
+    # human = Human(xh0, dynamics_h, goals)
+    belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=20)
+    human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
     robot = Robot(xr0, dynamics_r, r_goal)
 
     xh_traj = np.zeros((4, horizon))
@@ -81,6 +84,10 @@ def simulate_interaction(horizon=200):
             ur = robot.get_u(human.x, robot.x, human.x)
         else:
             ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
+
+        # update human's belief (if applicable)
+        if type(human) == BayesHuman:
+            human.update_belief(robot.x, ur)
 
         xh = human.step(uh)
         xr = robot.step(ur)
@@ -129,5 +136,8 @@ def save_data(path="./data/simulated_interactions.npz", n_trajectories=1000):
     np.savez(path, xh_traj=all_xh_traj, xr_traj=all_xr_traj, goal_reached=goal_reached, goal_idx=goal_idx, goals=all_goals)
 
 if __name__ == "__main__":
-    save_data(path="./data/simulated_interactions.npz")
+    # save_data(path="./data/simulated_interactions.npz")
     # save_data(path="./data/simulated_interactions2.npz", n_trajectories=200)
+
+    # save_data(path="./data/simulated_interactions_bayes.npz")
+    save_data(path="./data/simulated_interactions_bayes2.npz", n_trajectories=200)

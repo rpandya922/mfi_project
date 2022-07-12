@@ -1,12 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+import matplotlib.cm as cm
+import torch
+softmax = torch.nn.Softmax(dim=1)
 
 from dynamics import DIDynamics
 from human import Human
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
-from optimize_uncertainty import initialize_problem, overlay_timesteps
+from optimize_uncertainty import initialize_problem, overlay_timesteps, process_model_input
+from intention_predictor import create_model
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def static_influence_plot():
     xh0 = np.zeros(4)
@@ -57,22 +63,24 @@ def static_influence_plot():
     ax.set_aspect('equal', adjustable='box')
 
 if __name__ == "__main__":
-
-    # static_influence_plot()
-    # plt.show()
-    # 1/0
-
     horizon = 100
     n_initial = 0
     n_future = 25
     u_max = 20
     ts = 0.05
+    k_plan = 20
+    k_hist = 5
 
-    np.random.seed(0)
+    model = create_model(horizon_len=k_plan)
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    model.eval()
+    torch.manual_seed(1)
+
+    np.random.seed(1)
     human, robot, goals = initialize_problem()
     
     # creating human and robot
-    # xh0 = np.array([[3.0, 0.0, 0.0, 0.0]]).T
     xh0 = np.array([[0, 0.0, -5, 0.0]]).T
     xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
 
@@ -81,7 +89,6 @@ if __name__ == "__main__":
         [-5.0, 0.0, 5.0, 0.0],
         [5.0, 0.0, 5.0, 0.0],
     ]).T
-    # h_goal = goals[:,[1]]
     r_goal = goals[:,[0]]
 
     # xh0 = np.random.uniform(size=(4, 1))*20 - 10
@@ -95,8 +102,6 @@ if __name__ == "__main__":
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
 
-    # human = Human(xh0, h_dynamics, goals, h_goal, gamma=1)
-    # human = Human(xh0, h_dynamics, goals, gamma=1)
     belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
     human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
 
@@ -123,7 +128,7 @@ if __name__ == "__main__":
         xh = human.step(uh)
         xr = robot.step(ur)
 
-    overlay_timesteps(ax, xh_traj[:,:n_initial], xr_traj[:,:n_initial], goals, n_steps=n_initial)
+    # overlay_timesteps(ax, xh_traj[:,:n_initial], xr_traj[:,:n_initial], goals, n_steps=n_initial)
 
     # consider one possible future
     human2 = human.copy()
@@ -140,13 +145,14 @@ if __name__ == "__main__":
         xh = human2.step(uh)
         xr = robot2.step(ur)
 
-    # plt.show()
-    # 1/0
-
-    overlay_timesteps(ax, xh_traj[:,n_initial:n_initial+n_future], xr_traj[:,n_initial:n_initial+n_future], 
-        goals, n_steps=n_future)
+    # overlay_timesteps(ax, xh_traj[:,n_initial:n_initial+n_future], xr_traj[:,n_initial:n_initial+n_future], 
+    #     goals, n_steps=n_future)
 
     cmaps = ["hot_r", "Purples", "Blues", "YlGnBu", "Greens", "Reds", "Oranges", "Greys", "summer_r", "cool_r"]
+    xh_traj_to_plot = []
+    xr_traj_to_plot = []
+    entropies = []
+    goal_probs = []
     for idx in range(50):
         # consider another possible future
         human2 = human.copy()
@@ -154,15 +160,6 @@ if __name__ == "__main__":
         r_cmap = "Reds" # cmaps[idx % len(cmaps)]
         h_cmap = "Blues" # cmaps[idx % len(cmaps)]
         for i in range(n_initial, n_initial+n_future):
-            # plot human and robot positions
-            # ax.cla()
-            # ax.scatter(human2.x[0], human2.x[2], c="blue")
-            # ax.scatter(robot2.x[0], robot2.x[2], c="red")
-            # ax.scatter(goals[0], goals[2])
-            # ax.set_xlim(-10, 10)
-            # ax.set_ylim(-10, 10)
-            # plt.pause(0.01)
-
             # save data
             xh_traj[:,[i]] = human2.x
             xr_traj[:,[i]] = robot2.x
@@ -178,9 +175,49 @@ if __name__ == "__main__":
             xh = human2.step(uh)
             xr = robot2.step(ur)
 
-        overlay_timesteps(ax, xh_traj[:,n_initial:n_initial+n_future], xr_traj[:,n_initial:n_initial+n_future], 
-            goals, n_steps=n_future, h_cmap=h_cmap, r_cmap=r_cmap)
+        # get the predicted intention of the human based on this trajectory
+        xh_hist = xh_traj[:,n_initial:n_initial+k_hist]
+        xr_hist = xr_traj[:,n_initial:n_initial+k_hist]
+        xr_plan = xr_traj[:,n_initial+k_hist:n_initial+k_hist+k_plan]
 
-    # TODO: plot goals at the end
+        probs = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals)))
+        probs = probs + 1e-10
+        logits = torch.log2(probs)
+        entropy = -torch.sum(probs * logits).item()
+
+        xh_traj_to_plot.append(np.copy(xh_traj[:,n_initial:n_initial+n_future]))
+        xr_traj_to_plot.append(np.copy(xr_traj[:,n_initial:n_initial+n_future]))
+        entropies.append(entropy)
+        goal_probs.append(probs.detach().numpy())
+
+        # overlay_timesteps(ax, xh_traj[:,n_initial:n_initial+n_future], xr_traj[:,n_initial:n_initial+n_future], 
+        #     goals, n_steps=n_future, h_cmap=h_cmap, r_cmap=r_cmap)
+
+    entropies = np.array(entropies)
+
+    # sort by entropy values 
+    idx = np.argsort(entropies)
+    xh_traj_to_plot = [xh_traj_to_plot[i] for i in idx]
+    xr_traj_to_plot = [xr_traj_to_plot[i] for i in idx]
+    goal_probs = [goal_probs[i] for i in idx]
+    entropies = entropies[idx]
+
+    print(goal_probs[0], goal_probs[-1])
+
+    ent_colors = np.repeat(entropies[:,None], k_hist+k_plan, axis=1).flatten()
+    xh_traj_to_plot = np.hstack(xh_traj_to_plot)
+    xr_traj_to_plot = np.hstack(xr_traj_to_plot)
+    ax.scatter(xr_traj_to_plot[0,:], xr_traj_to_plot[2,:], c=ent_colors, cmap="Reds", 
+        s=5, vmin=np.amin(entropies)-0.2, vmax=np.amax(entropies))
+    ax.scatter(xh_traj_to_plot[0,:], xh_traj_to_plot[2,:], c=ent_colors, cmap="Blues", 
+        s=5, vmin=np.amin(entropies)-0.2, vmax=np.amax(entropies))
+    plt.colorbar(cm.ScalarMappable(cmap="Reds"), ax=ax)
+    plt.colorbar(cm.ScalarMappable(cmap="Blues"), ax=ax)
+    print(np.amin(entropies), np.amax(entropies))
+
+    # plot goals at the end
+    ax.scatter(goals[0,:], goals[2,:], c=['#3A637B', '#C4A46B', '#FF5A00'])
+    ax.set_xlim(-10, 10)
+    ax.set_ylim(-10, 10)
     plt.show()
         

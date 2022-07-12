@@ -17,6 +17,8 @@ from robot import Robot
 from intention_predictor import create_model
 from test_predictor import get_robot_plan
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class MaxEntropyPredictionProblem(object):
     # NOTE: unfinished and currently unused
     """
@@ -394,28 +396,33 @@ def process_model_input(xh_hist, xr_hist, xr_plan, goals):
     return traj_hist, xr_plan, goals
 
 def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", r_cmap="Reds"):
-    # human trajectory
-    points = xh_traj[[0,2],:].T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    
+    if len(xh_traj) > 0:
+        # human trajectory
+        points = xh_traj[[0,2],:].T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    norm = plt.Normalize(0, n_steps)
-    lc = LineCollection(segments, cmap=h_cmap, norm=norm, alpha=0.5)
-    # Set the values used for colormapping
-    lc.set_array(np.arange(n_steps+1))
-    lc.set_linewidth(2)
-    line = ax.add_collection(lc)
-    # fig.colorbar(line, ax=ax)
+        n_steps = xh_traj.shape[1]
+        norm = plt.Normalize(0, n_steps)
+        lc = LineCollection(segments, cmap=h_cmap, norm=norm, alpha=0.5)
+        # Set the values used for colormapping
+        lc.set_array(np.arange(n_steps+1))
+        lc.set_linewidth(2)
+        line = ax.add_collection(lc)
+        # fig.colorbar(line, ax=ax)
 
     # robot trajectory
-    points = xr_traj[[0,2],:].T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    if len(xr_traj) > 0:
+        points = xr_traj[[0,2],:].T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    norm = plt.Normalize(0, n_steps)
-    lc = LineCollection(segments, cmap=r_cmap, norm=norm)
-    # Set the values used for colormapping
-    lc.set_array(np.arange(n_steps+1))
-    lc.set_linewidth(2)
-    line = ax.add_collection(lc)
+        n_steps = xr_traj.shape[1]
+        norm = plt.Normalize(0, n_steps)
+        lc = LineCollection(segments, cmap=r_cmap, norm=norm)
+        # Set the values used for colormapping
+        lc.set_array(np.arange(n_steps+1))
+        lc.set_linewidth(2)
+        line = ax.add_collection(lc)
 
     ax.scatter(goals[0], goals[2], c=['#3A637B', '#C4A46B', '#FF5A00'])
 
@@ -426,17 +433,28 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", 
 def initialize_problem(ts=0.05):
     # create initial conditions for human and robot, construct objects
     # randomly initialize xh0, xr0, goals
-    xh0 = np.random.uniform(size=(4, 1))*20 - 10
-    xh0[[1,3]] = np.zeros((2, 1))
-    xr0 = np.random.uniform(size=(4, 1))*20 - 10
-    xr0[[1,3]] = np.zeros((2, 1))
+    # xh0 = np.random.uniform(size=(4, 1))*20 - 10
+    # xh0[[1,3]] = np.zeros((2, 1))
+    # xr0 = np.random.uniform(size=(4, 1))*20 - 10
+    # xr0[[1,3]] = np.zeros((2, 1))
 
-    # xh0 = np.array([[-2.5, 0.0, -5.0, 0.0]]).T
-    # xr0 = np.array([[0.0, 0.0, -5.0, 0.0]]).T
+    # # xh0 = np.array([[-2.5, 0.0, -5.0, 0.0]]).T
+    # # xr0 = np.array([[0.0, 0.0, -5.0, 0.0]]).T
 
-    goals = np.random.uniform(size=(4, 3))*20 - 10
-    goals[[1,3],:] = np.zeros((2, 3))
-    r_goal = goals[:,[np.random.randint(0,3)]]
+    # goals = np.random.uniform(size=(4, 3))*20 - 10
+    # goals[[1,3],:] = np.zeros((2, 3))
+    # r_goal = goals[:,[np.random.randint(0,3)]]
+
+    # creating human and robot
+    xh0 = np.array([[0, 0.0, -5, 0.0]]).T
+    xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
+
+    goals = np.array([
+        [5.0, 0.0, 0.0, 0.0],
+        [-5.0, 0.0, 5.0, 0.0],
+        [5.0, 0.0, 5.0, 0.0],
+    ]).T
+    r_goal = goals[:,[0]]
 
     dynamics_h = DIDynamics(ts)
     human = Human(xh0, dynamics_h, goals)
@@ -449,25 +467,24 @@ def initialize_problem(ts=0.05):
 
 if __name__ == "__main__":
     ts = 0.05
-    horizon = 100
+    horizon = 25
     k_hist = 5
     k_plan = 20
 
     model = create_model(horizon_len=k_plan)
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt"))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
 
-    np.random.seed(5)
+    # np.random.seed(5)
     human, robot, goals = initialize_problem()
-
-    # model2 = FC()
 
     # forward simulate 5 timesteps to pass in data to this problem
     xh_traj = np.zeros((4, horizon))
     xr_traj = np.zeros((4, horizon))
     h_goals = np.zeros((4, horizon))
     h_goal_reached = np.zeros((1, horizon))
-
     xr_plans = np.zeros((4, k_plan, horizon))
+
+    fig, ax = plt.subplots()
 
     for i in range(horizon):
         # save data
@@ -498,6 +515,10 @@ if __name__ == "__main__":
             print(goal_probs.detach().numpy(), goal_probs_nominal.detach().numpy())
             xr_plans[:,:,i] = xr_plan.T
 
+            # plot optimized plan
+            # overlay_timesteps(ax, xh_hist, xr_hist, goals)
+            # overlay_timesteps(ax, [], xr_plan.T, goals)
+
         # take step
         uh = human.get_u(robot.x)
         if i == 0:
@@ -511,7 +532,6 @@ if __name__ == "__main__":
         xr = robot.step(ur)
 
     # plot trajectory
-    fig, ax = plt.subplots()
     overlay_timesteps(ax, xh_traj, xr_traj, goals)
 
     for i in range(k_hist, horizon):
