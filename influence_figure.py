@@ -72,13 +72,13 @@ if __name__ == "__main__":
     k_hist = 5
 
     model = create_model(horizon_len=k_plan)
-    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
     model.eval()
     torch.manual_seed(1)
 
     np.random.seed(1)
-    human, robot, goals = initialize_problem()
+    # human, robot, goals = initialize_problem()
     
     # creating human and robot
     xh0 = np.array([[0, 0.0, -5, 0.0]]).T
@@ -102,8 +102,9 @@ if __name__ == "__main__":
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
 
-    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
-    human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
+    # belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
+    # human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
+    human = Human(xh0, h_dynamics, goals)
 
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
     robot.set_goals(goals)
@@ -208,9 +209,9 @@ if __name__ == "__main__":
     xh_traj_to_plot = np.hstack(xh_traj_to_plot)
     xr_traj_to_plot = np.hstack(xr_traj_to_plot)
     ax.scatter(xr_traj_to_plot[0,:], xr_traj_to_plot[2,:], c=ent_colors, cmap="Reds", 
-        s=5, vmin=np.amin(entropies)-0.2, vmax=np.amax(entropies))
+        s=5, vmin=np.amin(entropies), vmax=np.amax(entropies))
     ax.scatter(xh_traj_to_plot[0,:], xh_traj_to_plot[2,:], c=ent_colors, cmap="Blues", 
-        s=5, vmin=np.amin(entropies)-0.2, vmax=np.amax(entropies))
+        s=5, vmin=np.amin(entropies), vmax=np.amax(entropies))
     plt.colorbar(cm.ScalarMappable(cmap="Reds"), ax=ax)
     plt.colorbar(cm.ScalarMappable(cmap="Blues"), ax=ax)
     print(np.amin(entropies), np.amax(entropies))
@@ -220,4 +221,3 @@ if __name__ == "__main__":
     ax.set_xlim(-10, 10)
     ax.set_ylim(-10, 10)
     plt.show()
-        

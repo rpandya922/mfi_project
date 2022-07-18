@@ -4,39 +4,15 @@ softmax = torch.nn.Softmax(dim=1)
 import matplotlib.pyplot as plt
 
 from human import Human
+from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 from dynamics import DIDynamics
-from intention_predictor import IntentionPredictor, create_model
+from intention_predictor import create_model
+from intention_utils import process_model_input, get_robot_plan
 
-def get_robot_plan(robot, horizon=5, return_controls=False):
-    # ignore safe control for plan
-    robot_x = robot.x
-    robot_states = np.zeros((robot.dynamics.n, horizon))
-    robot_controls = np.zeros((robot.dynamics.m, horizon))
-    for i in range(horizon):
-        goal_u = robot.dynamics.get_goal_control(robot_x, robot.goal)
-        robot_x = robot.dynamics.step(robot_x, goal_u)
-        robot_states[:,[i]] = robot_x
-        robot_controls[:,[i]] = goal_u
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if return_controls:
-        return robot_states, robot_controls
-    return robot_states
-
-def get_empty_robot_plan(robot, horizon=5):
-    robot_states = np.hstack([robot.x for i in range(horizon)])
-
-    return robot_states
-
-if __name__ == "__main__":
-    model = create_model()
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor.pt"))
-    plot_sim = False
-
-    ts = 0.05
-    horizon = 100
-
-    # np.random.seed(0)
+def simulate_interaction(ts, horizon, k_hist, k_plan, model, plot_sim=False, print_pred=False):
     # randomly initialize xh0, xr0, goals
     xh0 = np.random.uniform(size=(4, 1))*20 - 10
     xh0[[1,3]] = np.zeros((2, 1))
@@ -47,10 +23,13 @@ if __name__ == "__main__":
     goals[[1,3],:] = np.zeros((2, 3))
     r_goal = goals[:,[np.random.randint(0,3)]]
 
-    dynamics_h = DIDynamics(ts)
-    human = Human(xh0, dynamics_h, goals)
-    dynamics_r = DIDynamics(ts)
-    robot = Robot(xr0, dynamics_r, r_goal)
+    h_dynamics = DIDynamics(ts=ts)
+    r_dynamics = DIDynamics(ts=ts)
+
+    # belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
+    # human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
+    human = Human(xh0, h_dynamics, goals)
+    robot = Robot(xr0, r_dynamics, r_goal)
 
     xh_traj = np.zeros((4, horizon))
     xr_traj = np.zeros((4, horizon))
@@ -58,7 +37,12 @@ if __name__ == "__main__":
     h_goal_reached = np.zeros((1, horizon))
 
     if plot_sim:
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
+
+    human_intentions = []
+    robot_predictions = []
+    timestep_99 = horizon+1
+    correct_pred  = []
 
     for i in range(horizon):
         # plot human, robot, and goals
@@ -79,6 +63,27 @@ if __name__ == "__main__":
         if np.linalg.norm(human.x - human.get_goal()) < 0.1:
             h_goal_reached[:,i] = 1
 
+        if i > k_hist:
+            # building the inputs to the model
+            xh_hist = xh_traj[:,i-k_hist+1:i+1]
+            xr_hist = xr_traj[:,i-k_hist+1:i+1]
+            xr_plan = get_robot_plan(robot, horizon=k_plan)
+
+            goal_probs = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals)))
+
+            est_goal_idx = torch.argmax(goal_probs).item()
+            _, h_goal_idx = human.get_goal(get_idx=True)
+
+            human_intentions.append(h_goal_idx)
+            robot_predictions.append(goal_probs)
+            if goal_probs[0,h_goal_idx] > 0.99 and est_goal_idx == h_goal_idx:
+                timestep_99 = min(timestep_99, i)
+            correct_pred.append(est_goal_idx == h_goal_idx)
+
+            if print_pred:
+                print(f"Predicted goal: {est_goal_idx}, True goal: {h_goal_idx}, P(correct): {goal_probs[0,h_goal_idx].item()}")
+                # print(h_goal_idx, est_goal_idx, goal_probs[0,est_goal_idx].item())
+
         # take step
         uh = human.get_u(robot.x)
         if i == 0:
@@ -86,22 +91,42 @@ if __name__ == "__main__":
         else:
             ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
 
+        # update human's belief (if applicable)
+        if type(human) == BayesHuman:
+            human.update_belief(robot.x, ur)
+
         xh = human.step(uh)
         xr = robot.step(ur)
+    
+    return xh_traj, xr_traj, goals, human_intentions, robot_predictions, timestep_99, correct_pred
 
-        if i > 5:
-            # building the inputs to the model
-            xh_hist = xh_traj[:,i-5:i]
-            xr_hist = xr_traj[:,i-5:i]
-            traj_hist = torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().unsqueeze(0)
-            r_plan = get_robot_plan(robot)
-            r_plan = torch.tensor(r_plan.T).float().unsqueeze(0)
-            input_goals = torch.tensor(goals).float().unsqueeze(0)
+if __name__ == "__main__":
+    ts = 0.05
+    horizon = 100
+    k_hist = 5
+    k_plan = 20
 
-            goal_probs = softmax(model(traj_hist, r_plan, input_goals))
-            est_goal_idx = torch.argmax(goal_probs).item()
+    model = create_model(horizon_len=k_plan)
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    model.eval()
+    plot_sim = False
+    print_pred = False
 
-            _, h_goal_idx = human.get_goal(get_idx=True)
+    np.random.seed(0)
+    torch.manual_seed(0)
 
-            print(h_goal_idx, est_goal_idx, goal_probs[0,est_goal_idx].item())
+    corrects = []
+    last_corrects = []
+    timestep_99s = []
+    for ii in range(10):
+        xh_traj, xr_traj, goals, human_intentions, robot_predictions, timestep_99, correct_pred = simulate_interaction(ts, horizon, k_hist, k_plan, model, plot_sim=plot_sim, print_pred=print_pred)
+        print(np.mean(correct_pred))
+
+        corrects.append(np.mean(correct_pred))
+        last_corrects.append(correct_pred[-1])
+        timestep_99s.append(timestep_99)
+    print(f"Mean correct prediction: {np.mean(corrects)}")
+    print(f"Last correct prediction: {np.mean(last_corrects)}")
+    print(f"Mean timestep 99: {np.mean(timestep_99s)}")
 

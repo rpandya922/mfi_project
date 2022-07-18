@@ -82,20 +82,32 @@ class BayesHuman(Human):
         self.belief = belief
 
         # goal is initially set randomly
-        g_idx = np.random.randint(self.goals.shape[1])
+        # g_idx = np.random.randint(self.goals.shape[1])
+        # self.goal = self.goals[:,[g_idx]]
+        # goal is set to the closest goal to the initial state
+        dists = np.linalg.norm(self.goals - x0, axis=0)
+        g_idx = np.argmin(dists)
         self.goal = self.goals[:,[g_idx]]
 
         # TODO: set control limits
 
-    def get_goal(self):
+    def get_goal(self, get_idx=False):
         r_goal = self.goals[:,[np.argmax(self.belief.belief)]]
 
         # if the estimated goal of the robot is the same as the human's current goal, change the goal
         if np.linalg.norm(r_goal - self.goal) <= 1e-3:
-            # goals are the same, change the human's goal
-            g_idx = np.random.randint(self.goals.shape[1])
+            # choose a new goal by selecting the closest goal that isn't the same as the robot's
+            dists = np.linalg.norm(self.goals - r_goal, axis=0)
+            dists[np.argmax(self.belief.belief)] = np.inf
+            g_idx = np.argmin(dists)
+            
+            # g_idx = np.random.randint(self.goals.shape[1])
             self.goal = self.goals[:,[g_idx]]
         
+        if get_idx:
+            # compute the index of the human's current goal
+            g_idx = np.argmin(np.linalg.norm(self.goals - self.goal, axis=1))
+            return self.goal, g_idx
         return self.goal
 
     def update_belief(self, robot_x, robot_u):

@@ -11,8 +11,7 @@ from dynamics import DIDynamics
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 from intention_predictor import create_model
-from test_predictor import get_robot_plan
-from optimize_uncertainty import initialize_problem, overlay_timesteps
+from intention_utils import initialize_problem, overlay_timesteps
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

@@ -6,44 +6,6 @@ from human import Human
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 
-def test_sim():
-    ts = 0.1
-    x0_h = np.array([[0.5, 0.0, 0.0, 0.0]]).T
-    x0_r = np.array([[2.0, 0.0, 2.0, 0.0]]).T
-
-    goals_h = np.array([[5.0, 0.0, 5.0, 0.0],
-                        [6.0, 0.0, 4.0, 0.0]]).T
-    goal_r = np.array([[5.0, 0.0, 5.0, 0.0]]).T
-
-    dynamics_h = DIDynamics(ts)
-    human = Human(x0_h, dynamics_h, goals_h)
-
-    dynamics_r = DIDynamics(ts)
-    robot = Robot(x0_r, dynamics_r, goal_r)
-
-    fig, ax = plt.subplots()
-
-    for t in range(200):
-        print(human.get_goal().flatten())
-
-        uh = human.get_u(robot.x)
-        ur = robot.get_u()
-
-        xh = human.step(uh)
-        xr = robot.step(ur)
-
-        ax.cla()
-        ax.set_xlim(-10, 10)
-        ax.set_ylim(-10, 10)
-
-        ax.scatter(goals_h[0], goals_h[2])
-        
-        ax.scatter(xh[0], xh[2])
-        ax.scatter(xr[0], xr[2])
-
-        plt.pause(0.01)
-    # plt.show()
-
 def simulate_interaction(horizon=200):
     ts = 0.05
 
