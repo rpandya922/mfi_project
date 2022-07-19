@@ -21,14 +21,19 @@ def simulate_interaction(ts, horizon, k_hist, k_plan, model, plot_sim=False, pri
 
     goals = np.random.uniform(size=(4, 3))*20 - 10
     goals[[1,3],:] = np.zeros((2, 3))
+    # check if all goals are at least 3.0 away from each other
+    while np.linalg.norm(goals[:,0] - goals[:,1]) < 3.0 or np.linalg.norm(goals[:,0] - goals[:,2]) < 3.0 or np.linalg.norm(goals[:,1] - goals[:,2]) < 3.0:
+        goals = np.random.uniform(size=(4, 3))*20 - 10
+        goals[[1,3],:] = np.zeros((2, 3))
+
     r_goal = goals[:,[np.random.randint(0,3)]]
 
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
 
-    # belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
-    # human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
-    human = Human(xh0, h_dynamics, goals)
+    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
+    human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
+    # human = Human(xh0, h_dynamics, goals)
     robot = Robot(xr0, r_dynamics, r_goal)
 
     xh_traj = np.zeros((4, horizon))
@@ -48,9 +53,9 @@ def simulate_interaction(ts, horizon, k_hist, k_plan, model, plot_sim=False, pri
         # plot human, robot, and goals
         if plot_sim:
             ax.cla()
-            ax.scatter(human.x[0], human.x[2])
-            ax.scatter(robot.x[0], robot.x[2])
-            ax.scatter(goals[0], goals[2])
+            ax.scatter(human.x[0], human.x[2], c='xkcd:medium blue')
+            ax.scatter(robot.x[0], robot.x[2], c='xkcd:scarlet')
+            ax.scatter(goals[0], goals[2], c=['#3A637B', '#C4A46B', '#FF5A00'])
             ax.set_xlim(-10, 10)
             ax.set_ylim(-10, 10)
             plt.pause(0.01)
@@ -68,6 +73,12 @@ def simulate_interaction(ts, horizon, k_hist, k_plan, model, plot_sim=False, pri
             xh_hist = xh_traj[:,i-k_hist+1:i+1]
             xr_hist = xr_traj[:,i-k_hist+1:i+1]
             xr_plan = get_robot_plan(robot, horizon=k_plan)
+            
+            # print human's belief of robot's goal
+            if print_pred:
+                robot_i = np.argmin(np.linalg.norm(robot.goal - goals, axis=0))
+                print(f"Human belief: {np.argmax(human.belief.belief)}, Robot goal: {robot_i}")
+                print()
 
             goal_probs = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals)))
 
@@ -107,11 +118,11 @@ if __name__ == "__main__":
     k_plan = 20
 
     model = create_model(horizon_len=k_plan)
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
-    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
     model.eval()
-    plot_sim = False
-    print_pred = False
+    plot_sim = True
+    print_pred = True
 
     np.random.seed(0)
     torch.manual_seed(0)
@@ -126,6 +137,7 @@ if __name__ == "__main__":
         corrects.append(np.mean(correct_pred))
         last_corrects.append(correct_pred[-1])
         timestep_99s.append(timestep_99)
+        print()
     print(f"Mean correct prediction: {np.mean(corrects)}")
     print(f"Last correct prediction: {np.mean(last_corrects)}")
     print(f"Mean timestep 99: {np.mean(timestep_99s)}")

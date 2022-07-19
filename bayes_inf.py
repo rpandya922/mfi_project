@@ -52,15 +52,15 @@ class BayesEstimator():
         opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
 
         # testing
-        # dists = []
-        # for s in next_states:
-        #     dd = []
-        #     for i in range(3):
-        #         t = self.thetas[:,[i]]
-        #         dd.append(np.linalg.norm(s[[0,2]] - t[[0,2]]))
-        #     dists.append(dd)
-        # dists = np.array(dists)
-        # assert np.sum(dists - opt_rewards) == 0 # passes
+        dists = []
+        for s in next_states:
+            dd = []
+            for i in range(3):
+                t = self.thetas[:,[i]]
+                dd.append(np.linalg.norm(s - t))
+            dists.append(dd)
+        dists = np.array(dists)
+        assert np.isclose(dists, opt_rewards).all() # passes
 
         Q_vals = rs - opt_rewards
 
@@ -106,7 +106,8 @@ class BayesHuman(Human):
         
         if get_idx:
             # compute the index of the human's current goal
-            g_idx = np.argmin(np.linalg.norm(self.goals - self.goal, axis=1))
+            g_idx = np.argmin(np.linalg.norm(self.goals - self.goal, axis=0))
+
             return self.goal, g_idx
         return self.goal
 

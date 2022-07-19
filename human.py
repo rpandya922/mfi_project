@@ -55,3 +55,38 @@ class Human(BaseAgent):
         if self.set_goal:
             return Human(self.x, self.dynamics, self.goals, self.goal)
         return Human(self.x, self.dynamics, self.goals)
+
+class RuleBasedHuman(Human):
+    def __init__(self, x0, dynamics : Dynamics, goals, goal=None, gamma=1):
+        super().__init__(x0, dynamics, goals, goal, gamma)
+
+    def get_goal(self, robot_x):
+        # if goal was set on initialization, return that
+        if self.set_goal:
+            return self.goal
+        
+        # nominal goal is the closest by Euclidean distance
+        goal_xy = self.goals[[0,2],:]
+        dists = np.linalg.norm(goal_xy-self.x[[0,2]], axis=0)
+        min_i = np.argmin(dists)
+        goal = self.goals[:,[min_i]]
+
+        # check whether the robot is closer to the human's current goal
+        robot_xy = robot_x[[0,2],:]
+        dists_robot = np.linalg.norm(robot_xy-goal_xy, axis=0)
+        min_i_robot = np.argmin(dists)
+        if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
+            # set goal to be a the next closest goal by distance
+            dists[min_i] = np.inf
+            min_i = np.argmin(dists)
+            goal = self.goals[:,[min_i]]
+        
+        return goal
+
+    def get_u(self, robot_x):
+        # get control that moves human towards goal
+        goal = self.get_goal(robot_x)
+        goal_u = self.dynamics.get_goal_control(self.x, goal)
+        # get control that pushes human away from robot
+        robot_avoid_u = self.dynamics.get_robot_control(self.x, robot_x)
+        return goal_u + robot_avoid_u
