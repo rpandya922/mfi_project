@@ -65,13 +65,15 @@ if __name__ == "__main__":
     horizon = 20
     # load npz dataset file
     # traj_data = np.load("./data/simulated_interactions.npz")
-    traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    # traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    traj_data = np.load("./data/simulated_interactions_rule.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     # traj_data = np.load("./data/simulated_interactions2.npz")
-    traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    # traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    traj_data = np.load("./data/simulated_interactions_rule2.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon)
     val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
 

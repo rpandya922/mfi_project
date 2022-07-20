@@ -15,9 +15,9 @@ from intention_utils import initialize_problem, overlay_timesteps
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def sample_xr_plan():
+def sample_xr_plan(execute_sample=True):
     ts = 0.05
-    horizon = 25
+    horizon = 100
     k_hist = 5
     k_plan = 20
     n_sample = 10000
@@ -42,7 +42,7 @@ def sample_xr_plan():
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
 
-    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
+    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
     human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
 
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
@@ -88,22 +88,28 @@ def sample_xr_plan():
             logits = torch.log2(probs)
             entropy = -torch.sum(probs * logits, dim=1).detach().numpy()
             entropy = np.nan_to_num(entropy, nan=-np.inf)
-            
-            # TODO: print the range of entropy
 
-            max_ent_idx = np.argmax(entropy)
+            # max_ent_idx = np.argmax(entropy)
+            max_ent_idx = np.argmin(entropy)
             print(probs[max_ent_idx].detach().numpy())
             xr_plans[:,:,i] = xr_plan[max_ent_idx,:,:].T
             ur_plan = sampled_u[:,:,max_ent_idx]
 
+            # plot optimized plan (if execute_sample is False)
+            if not execute_sample:
+                overlay_timesteps(ax, xh_hist, xr_hist, goals)
+                overlay_timesteps(ax, [], xr_plans[:,:,i], goals)
+
         # take step
         uh = human.get_u(robot.x)
-        if i == 0:
-            ur = robot.get_u(human.x, robot.x, human.x)
-        elif i <= k_hist:
-            ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
+        if execute_sample:
+            if i <= k_hist:
+                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+            else:
+                ur = ur_plan[:,[0]]
         else:
-            ur = ur_plan[:,[0]]
+            # set ur to be goal-directed action
+            ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
 
         # update human's belief (if applicable)
         if type(human) == BayesHuman:
@@ -115,40 +121,19 @@ def sample_xr_plan():
      # plot trajectory
     overlay_timesteps(ax, xh_traj, xr_traj, goals)
 
-    for i in range(k_hist, horizon):
-        # robot planned trajectory
-        xr_plan = xr_plans[:,:,i]
-        points = xr_plan[[0,2],:].T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    # for i in range(k_hist, horizon):
+    #     # robot planned trajectory
+    #     xr_plan = xr_plans[:,:,i]
+    #     points = xr_plan[[0,2],:].T.reshape(-1, 1, 2)
+    #     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        norm = plt.Normalize(0, k_plan)
-        lc = LineCollection(segments, cmap='Purples', norm=norm)
-        # Set the values used for colormapping
-        lc.set_array(np.arange(k_plan+1))
-        lc.set_linewidth(2)
-        line = ax.add_collection(lc)
+    #     norm = plt.Normalize(0, k_plan)
+    #     lc = LineCollection(segments, cmap='Purples', norm=norm)
+    #     # Set the values used for colormapping
+    #     lc.set_array(np.arange(k_plan+1))
+    #     lc.set_linewidth(2)
+    #     line = ax.add_collection(lc)
     plt.show()
-
-def sample_full_traj():
-    # NOTE: unfinished
-    ts = 0.05
-    horizon = 100
-    k_hist = 5
-    k_plan = 20
-    n_sample = 10000
-    u_max = 10
-
-    model = create_model(horizon_len=k_plan)
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt"))
-
-    np.random.seed(0)
-    human, robot, goals = initialize_problem()
-
-    # forward simulate 5 timesteps to pass in data to this problem
-    xh_traj = np.zeros((4, horizon))
-    xr_traj = np.zeros((4, horizon))
-    h_goals = np.zeros((4, horizon))
-    h_goal_reached = np.zeros((1, horizon))
-
+    
 if __name__ == "__main__":
-    sample_xr_plan()
+    sample_xr_plan(execute_sample=True)

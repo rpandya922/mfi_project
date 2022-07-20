@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from dynamics import DIDynamics
-from human import Human
+from human import Human, RuleBasedHuman
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 
@@ -22,8 +22,9 @@ def simulate_interaction(horizon=200):
     dynamics_h = DIDynamics(ts)
     dynamics_r = DIDynamics(ts)
     # human = Human(xh0, dynamics_h, goals)
-    belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=1)
-    human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
+    # belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=1)
+    # human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
+    human = RuleBasedHuman(xh0, dynamics_h, goals)
     robot = Robot(xr0, dynamics_r, r_goal)
 
     xh_traj = np.zeros((4, horizon))
@@ -35,9 +36,13 @@ def simulate_interaction(horizon=200):
         # save data
         xh_traj[:,[i]] = human.x
         xr_traj[:,[i]] = robot.x
-        h_goals[:,[i]] = human.get_goal()
+        if type(human) == RuleBasedHuman:
+            h_goal = human.get_goal(robot.x)
+        else:
+            h_goal = human.get_goal()
+        h_goals[:,[i]] = h_goal
         # check if human reached its goal
-        if np.linalg.norm(human.x - human.get_goal()) < 0.1:
+        if np.linalg.norm(human.x - h_goal) < 0.1:
             h_goal_reached[:,i] = 1
 
         # take step
@@ -102,4 +107,7 @@ if __name__ == "__main__":
     # save_data(path="./data/simulated_interactions2.npz", n_trajectories=200)
 
     # save_data(path="./data/simulated_interactions_bayes.npz")
-    save_data(path="./data/simulated_interactions_bayes2.npz", n_trajectories=200)
+    # save_data(path="./data/simulated_interactions_bayes2.npz", n_trajectories=200)
+
+    # save_data(path="./data/simulated_interactions_rule.npz")
+    save_data(path="./data/simulated_interactions_rule2.npz", n_trajectories=200)

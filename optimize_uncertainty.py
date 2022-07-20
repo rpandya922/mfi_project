@@ -11,6 +11,7 @@ from matplotlib.collections import LineCollection
 
 from intention_predictor import create_model
 from intention_utils import process_model_input, overlay_timesteps, initialize_problem, get_robot_plan
+from bayes_inf import BayesHuman
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -385,7 +386,7 @@ def create_nlp(human, robot, model, k_hist, k_plan, xh_hist, xr_hist):
 
 if __name__ == "__main__":
     ts = 0.05
-    horizon = 25
+    horizon = 100
     k_hist = 5
     k_plan = 20
 
@@ -393,7 +394,7 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
 
     # np.random.seed(5)
-    human, robot, goals = initialize_problem()
+    human, robot, goals = initialize_problem(bayesian=True)
 
     # forward simulate 5 timesteps to pass in data to this problem
     xh_traj = np.zeros((4, horizon))
@@ -431,38 +432,43 @@ if __name__ == "__main__":
             goal_probs_nominal = softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan_nominal, goals)))
 
             print(goal_probs.detach().numpy(), goal_probs_nominal.detach().numpy())
+            _, h_goal_idx = human.get_goal(get_idx=True)
+            print(h_goal_idx)
             xr_plans[:,:,i] = xr_plan.T
 
             # plot optimized plan
-            # overlay_timesteps(ax, xh_hist, xr_hist, goals)
-            # overlay_timesteps(ax, [], xr_plan.T, goals)
+            overlay_timesteps(ax, xh_hist, xr_hist, goals)
+            overlay_timesteps(ax, [], xr_plan.T, goals)
 
         # take step
         uh = human.get_u(robot.x)
-        if i == 0:
-            ur = robot.get_u(human.x, robot.x, human.x)
-        else: # i <= k_hist:
-            ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
+        # if i == 0:
+        #     ur = robot.get_u(human.x, robot.x, human.x)
         # else:
-        #     ur = ur_plan.T[:,[0]]
+        #     ur = robot.get_u(human.x, xr_traj[:,[i-1]], xh_traj[:,[i-1]])
+        ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+
+        # update human's belief it is a BayesHuman
+        if type(human) == BayesHuman:
+            human.update_belief(robot.x, ur)
 
         xh = human.step(uh)
         xr = robot.step(ur)
 
     # plot trajectory
-    overlay_timesteps(ax, xh_traj, xr_traj, goals)
+    # overlay_timesteps(ax, xh_traj, xr_traj, goals)
 
-    for i in range(k_hist, horizon):
-        # robot planned trajectory
-        xr_plan = xr_plans[:,:,i]
-        points = xr_plan[[0,2],:].T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    # for i in range(k_hist, horizon):
+    #     # robot planned trajectory
+    #     xr_plan = xr_plans[:,:,i]
+    #     points = xr_plan[[0,2],:].T.reshape(-1, 1, 2)
+    #     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        norm = plt.Normalize(0, k_plan)
-        lc = LineCollection(segments, cmap='Purples', norm=norm)
-        # Set the values used for colormapping
-        lc.set_array(np.arange(k_plan+1))
-        lc.set_linewidth(2)
-        line = ax.add_collection(lc)
+    #     norm = plt.Normalize(0, k_plan)
+    #     lc = LineCollection(segments, cmap='Purples', norm=norm)
+    #     # Set the values used for colormapping
+    #     lc.set_array(np.arange(k_plan+1))
+    #     lc.set_linewidth(2)
+    #     line = ax.add_collection(lc)
 
     plt.show()

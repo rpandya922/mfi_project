@@ -75,12 +75,18 @@ class RuleBasedHuman(Human):
         robot_xy = robot_x[[0,2],:]
         dists_robot = np.linalg.norm(robot_xy-goal_xy, axis=0)
         min_i_robot = np.argmin(dists)
-        if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
-            # set goal to be a the next closest goal by distance
-            dists[min_i] = np.inf
-            min_i = np.argmin(dists)
-            goal = self.goals[:,[min_i]]
+        # if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
+        #     # set goal to be a the next closest goal by distance
+        #     dists[min_i] = np.inf
+        #     min_i = np.argmin(dists)
+        #     goal = self.goals[:,[min_i]]
         
+        if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
+            # randomly select a new goal (that's different from the previous goal) if the robot is closer
+            possible_idxs = [i for i in range(self.goals.shape[1]) if i != min_i]
+            new_i = np.random.choice(possible_idxs)
+            goal = self.goals[:,[new_i]]
+
         return goal
 
     def get_u(self, robot_x):

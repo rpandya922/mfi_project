@@ -6,6 +6,7 @@ from matplotlib.collections import LineCollection
 from robot import Robot
 from human import Human
 from dynamics import DIDynamics
+from bayes_inf import BayesEstimator, BayesHuman
 
 def get_robot_plan(robot : Robot, horizon=5, return_controls=False):
     # ignore safe control for plan
@@ -69,7 +70,7 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", 
     ax.set_xlim(-10, 10)
 
 
-def initialize_problem(ts=0.05):
+def initialize_problem(ts=0.05, bayesian=False):
     # create initial conditions for human and robot, construct objects
     # randomly initialize xh0, xr0, goals
     # xh0 = np.random.uniform(size=(4, 1))*20 - 10
@@ -96,10 +97,14 @@ def initialize_problem(ts=0.05):
     r_goal = goals[:,[0]]
 
     dynamics_h = DIDynamics(ts)
-    human = Human(xh0, dynamics_h, goals)
     dynamics_r = DIDynamics(ts)
+    if bayesian:
+        belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=1)
+        human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
+    else:
+        human = Human(xh0, dynamics_h, goals)
     robot = Robot(xr0, dynamics_r, r_goal)
 
-    # robot.dmin=0.5
+    robot.dmin=0.0
     
     return human, robot, goals

@@ -6,7 +6,7 @@ import torch
 softmax = torch.nn.Softmax(dim=1)
 
 from dynamics import DIDynamics
-from human import Human
+from human import Human, RuleBasedHuman
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 from optimize_uncertainty import initialize_problem, overlay_timesteps, process_model_input
@@ -72,39 +72,40 @@ if __name__ == "__main__":
     k_hist = 5
 
     model = create_model(horizon_len=k_plan)
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
-    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
     model.eval()
-    torch.manual_seed(1)
+    torch.manual_seed(0)
 
-    np.random.seed(1)
+    np.random.seed(0)
     # human, robot, goals = initialize_problem()
     
     # creating human and robot
-    xh0 = np.array([[0, 0.0, -5, 0.0]]).T
-    xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
+    # xh0 = np.array([[0, 0.0, -5, 0.0]]).T
+    # xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
 
-    goals = np.array([
-        [5.0, 0.0, 0.0, 0.0],
-        [-5.0, 0.0, 5.0, 0.0],
-        [5.0, 0.0, 5.0, 0.0],
-    ]).T
-    r_goal = goals[:,[0]]
+    # goals = np.array([
+    #     [5.0, 0.0, 0.0, 0.0],
+    #     [-5.0, 0.0, 5.0, 0.0],
+    #     [5.0, 0.0, 5.0, 0.0],
+    # ]).T
+    # r_goal = goals[:,[0]]
 
-    # xh0 = np.random.uniform(size=(4, 1))*20 - 10
-    # xh0[[1,3]] = np.zeros((2, 1))
-    # xr0 = np.random.uniform(size=(4, 1))*20 - 10
-    # xr0[[1,3]] = np.zeros((2, 1))
-    # goals = np.random.uniform(size=(4, 3))*20 - 10
-    # goals[[1,3],:] = np.zeros((2, 3))
-    # r_goal = goals[:,[np.random.randint(0,3)]]
+    xh0 = np.random.uniform(size=(4, 1))*20 - 10
+    xh0[[1,3]] = np.zeros((2, 1))
+    xr0 = np.random.uniform(size=(4, 1))*20 - 10
+    xr0[[1,3]] = np.zeros((2, 1))
+    goals = np.random.uniform(size=(4, 3))*20 - 10
+    goals[[1,3],:] = np.zeros((2, 3))
+    r_goal = goals[:,[np.random.randint(0,3)]]
 
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
 
-    # belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=20)
-    # human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
-    human = Human(xh0, h_dynamics, goals)
+    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
+    human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=1)
+    # human = Human(xh0, h_dynamics, goals)
+    # human = RuleBasedHuman(xh0, h_dynamics, goals)
 
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
     robot.set_goals(goals)
