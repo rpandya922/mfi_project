@@ -74,30 +74,31 @@ if __name__ == "__main__":
     model = create_model(horizon_len=k_plan)
     # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_plan20.pt", map_location=device))
     model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    # model.load_state_dict(torch.load("./data/models/sim_intention_predictor_rule.pt", map_location=device))
     model.eval()
-    torch.manual_seed(0)
+    torch.manual_seed(1)
 
-    np.random.seed(0)
+    np.random.seed(1)
     # human, robot, goals = initialize_problem()
     
     # creating human and robot
-    # xh0 = np.array([[0, 0.0, -5, 0.0]]).T
-    # xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
+    xh0 = np.array([[0, 0.0, -5, 0.0]]).T
+    xr0 = np.array([[0.0, 0.0, 0.0, 0.0]]).T
 
-    # goals = np.array([
-    #     [5.0, 0.0, 0.0, 0.0],
-    #     [-5.0, 0.0, 5.0, 0.0],
-    #     [5.0, 0.0, 5.0, 0.0],
-    # ]).T
-    # r_goal = goals[:,[0]]
+    goals = np.array([
+        [5.0, 0.0, 0.0, 0.0],
+        [-5.0, 0.0, 5.0, 0.0],
+        [5.0, 0.0, 5.0, 0.0],
+    ]).T
+    r_goal = goals[:,[0]]
 
-    xh0 = np.random.uniform(size=(4, 1))*20 - 10
-    xh0[[1,3]] = np.zeros((2, 1))
-    xr0 = np.random.uniform(size=(4, 1))*20 - 10
-    xr0[[1,3]] = np.zeros((2, 1))
-    goals = np.random.uniform(size=(4, 3))*20 - 10
-    goals[[1,3],:] = np.zeros((2, 3))
-    r_goal = goals[:,[np.random.randint(0,3)]]
+    # xh0 = np.random.uniform(size=(4, 1))*20 - 10
+    # xh0[[1,3]] = np.zeros((2, 1))
+    # xr0 = np.random.uniform(size=(4, 1))*20 - 10
+    # xr0[[1,3]] = np.zeros((2, 1))
+    # goals = np.random.uniform(size=(4, 3))*20 - 10
+    # goals[[1,3],:] = np.zeros((2, 3))
+    # r_goal = goals[:,[np.random.randint(0,3)]]
 
     h_dynamics = DIDynamics(ts=ts)
     r_dynamics = DIDynamics(ts=ts)
@@ -210,9 +211,9 @@ if __name__ == "__main__":
     xh_traj_to_plot = np.hstack(xh_traj_to_plot)
     xr_traj_to_plot = np.hstack(xr_traj_to_plot)
     ax.scatter(xr_traj_to_plot[0,:], xr_traj_to_plot[2,:], c=ent_colors, cmap="Reds", 
-        s=5, vmin=np.amin(entropies), vmax=np.amax(entropies))
+        s=5, vmin=np.amin(entropies)*0.8, vmax=np.amax(entropies))
     ax.scatter(xh_traj_to_plot[0,:], xh_traj_to_plot[2,:], c=ent_colors, cmap="Blues", 
-        s=5, vmin=np.amin(entropies), vmax=np.amax(entropies))
+        s=5, vmin=np.amin(entropies)*0.8, vmax=np.amax(entropies))
     plt.colorbar(cm.ScalarMappable(cmap="Reds"), ax=ax)
     plt.colorbar(cm.ScalarMappable(cmap="Blues"), ax=ax)
     print(np.amin(entropies), np.amax(entropies))
