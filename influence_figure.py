@@ -9,7 +9,7 @@ from dynamics import DIDynamics
 from human import Human, RuleBasedHuman
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
-from optimize_uncertainty import initialize_problem, overlay_timesteps, process_model_input
+from intention_utils import initialize_problem, overlay_timesteps, process_model_input
 from intention_predictor import create_model
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -156,12 +156,14 @@ if __name__ == "__main__":
     xr_traj_to_plot = []
     entropies = []
     goal_probs = []
+    ur_traj = []
     for idx in range(50):
         # consider another possible future
         human2 = human.copy()
         robot2 = robot.copy()
         r_cmap = "Reds" # cmaps[idx % len(cmaps)]
         h_cmap = "Blues" # cmaps[idx % len(cmaps)]
+        ur_traj.append([])
         for i in range(n_initial, n_initial+n_future):
             # save data
             xh_traj[:,[i]] = human2.x
@@ -177,6 +179,9 @@ if __name__ == "__main__":
 
             xh = human2.step(uh)
             xr = robot2.step(ur)
+
+            # save controls
+            ur_traj[-1].append(ur)
 
         # get the predicted intention of the human based on this trajectory
         xh_hist = xh_traj[:,n_initial:n_initial+k_hist]
@@ -204,6 +209,10 @@ if __name__ == "__main__":
     xr_traj_to_plot = [xr_traj_to_plot[i] for i in idx]
     goal_probs = [goal_probs[i] for i in idx]
     entropies = entropies[idx]
+
+    # save sorted robot controls to npz file
+    ur_traj_to_save = [ur_traj[i] for i in idx]
+    np.savez("./data/ur_traj_sorted.npz", ur=ur_traj_to_save)
 
     print(goal_probs[0], goal_probs[-1])
 

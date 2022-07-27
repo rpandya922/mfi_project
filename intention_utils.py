@@ -3,14 +3,29 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
+from agent import BaseAgent
 from robot import Robot
 from human import Human
 from dynamics import DIDynamics
 from bayes_inf import BayesEstimator, BayesHuman
 
-def get_robot_plan(robot : Robot, horizon=5, return_controls=False):
+def rollout_control(agent : BaseAgent, controls, modify=False):
+    if not modify:
+        agent = agent.copy()
+
+    xs = []
+    for i in range(controls.shape[1]):
+        agent.step(controls[:,[i]])
+        xs.append(agent.x.copy())
+    return np.hstack(xs)
+
+def get_robot_plan(robot : Robot, horizon=5, return_controls=False, xr0=None):
     # ignore safe control for plan
-    robot_x = robot.x
+    if xr0 is None:
+        robot_x = robot.x
+    else:
+        robot_x = xr0
+
     robot_states = np.zeros((robot.dynamics.n, horizon))
     robot_controls = np.zeros((robot.dynamics.m, horizon))
     for i in range(horizon):

@@ -60,16 +60,22 @@ class RuleBasedHuman(Human):
     def __init__(self, x0, dynamics : Dynamics, goals, goal=None, gamma=1):
         super().__init__(x0, dynamics, goals, goal, gamma)
 
-    def get_goal(self, robot_x):
-        # if goal was set on initialization, return that
-        if self.set_goal:
-            return self.goal
-        
         # nominal goal is the closest by Euclidean distance
         goal_xy = self.goals[[0,2],:]
         dists = np.linalg.norm(goal_xy-self.x[[0,2]], axis=0)
         min_i = np.argmin(dists)
         goal = self.goals[:,[min_i]]
+        self.goal = goal
+
+    def get_goal(self, robot_x):
+        # if goal was set on initialization, return that
+        if self.set_goal:
+            return self.goal
+
+        goal_xy = self.goals[[0,2],:]
+        dists = np.linalg.norm(goal_xy-self.x[[0,2]], axis=0)
+
+        # TODO: only change goals if robot is closer to them, then set that goal as the new nominal goal
 
         # check whether the robot is closer to the human's current goal
         robot_xy = robot_x[[0,2],:]
@@ -82,6 +88,7 @@ class RuleBasedHuman(Human):
         #     goal = self.goals[:,[min_i]]
         
         if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
+            import ipdb; ipdb.set_trace()
             # randomly select a new goal (that's different from the previous goal) if the robot is closer
             possible_idxs = [i for i in range(self.goals.shape[1]) if i != min_i]
             new_i = np.random.choice(possible_idxs)

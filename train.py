@@ -65,15 +65,15 @@ if __name__ == "__main__":
     horizon = 20
     # load npz dataset file
     # traj_data = np.load("./data/simulated_interactions.npz")
-    # traj_data = np.load("./data/simulated_interactions_bayes.npz")
-    traj_data = np.load("./data/simulated_interactions_rule.npz")
+    traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    # traj_data = np.load("./data/simulated_interactions_rule.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     # traj_data = np.load("./data/simulated_interactions2.npz")
-    # traj_data = np.load("./data/simulated_interactions_bayes2.npz")
-    traj_data = np.load("./data/simulated_interactions_rule2.npz")
+    traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    # traj_data = np.load("./data/simulated_interactions_rule2.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon)
     val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
 
@@ -87,6 +87,7 @@ if __name__ == "__main__":
     # TODO: don't overwrite existing model, save into new file based on date/time
     # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_plan20.pt")
     torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_bayes.pt")
+    # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_rule.pt")
 
     plt.plot(all_train_loss, label="train")
     plt.plot(all_val_loss, label="val")
