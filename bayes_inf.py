@@ -75,6 +75,9 @@ class BayesEstimator():
 
         return new_belief
 
+    def copy(self):
+        return BayesEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
+
 # TODO: is it better to have Human and BayesHuman inherit from a BaseHuman or just do it this way?
 class BayesHuman(Human):
     def __init__(self, x0, dynamics : Dynamics, goals, belief : BayesEstimator, gamma=1):
@@ -115,7 +118,7 @@ class BayesHuman(Human):
         self.belief.update_belief(robot_x, robot_u)
 
     def copy(self):
-        return BayesHuman(self.x, self.dynamics, self.goals, self.belief, self.gamma)
+        return BayesHuman(self.x, self.dynamics, self.goals, self.belief.copy(), self.gamma)
 
 # TODO: is it better to have Robot and BayesRobot inherit from a BaseRobot or just do it this way?
 class BayesRobot(Robot):

@@ -164,6 +164,7 @@ if __name__ == "__main__":
         r_cmap = "Reds" # cmaps[idx % len(cmaps)]
         h_cmap = "Blues" # cmaps[idx % len(cmaps)]
         ur_traj.append([])
+        # TODO: roll out longer trajectories and evaluate average (?) entropy along full trajectory
         for i in range(n_initial, n_initial+n_future):
             # save data
             xh_traj[:,[i]] = human2.x
@@ -200,7 +201,8 @@ if __name__ == "__main__":
 
         # overlay_timesteps(ax, xh_traj[:,n_initial:n_initial+n_future], xr_traj[:,n_initial:n_initial+n_future], 
         #     goals, n_steps=n_future, h_cmap=h_cmap, r_cmap=r_cmap)
-
+        import ipdb; ipdb.set_trace()
+        
     entropies = np.array(entropies)
 
     # sort by entropy values 
@@ -220,9 +222,9 @@ if __name__ == "__main__":
     xh_traj_to_plot = np.hstack(xh_traj_to_plot)
     xr_traj_to_plot = np.hstack(xr_traj_to_plot)
     ax.scatter(xr_traj_to_plot[0,:], xr_traj_to_plot[2,:], c=ent_colors, cmap="Reds", 
-        s=5, vmin=np.amin(entropies)*0.8, vmax=np.amax(entropies))
+        s=5, vmin=0, vmax=np.amax(entropies))
     ax.scatter(xh_traj_to_plot[0,:], xh_traj_to_plot[2,:], c=ent_colors, cmap="Blues", 
-        s=5, vmin=np.amin(entropies)*0.8, vmax=np.amax(entropies))
+        s=5, vmin=0, vmax=np.amax(entropies))
     plt.colorbar(cm.ScalarMappable(cmap="Reds"), ax=ax)
     plt.colorbar(cm.ScalarMappable(cmap="Blues"), ax=ax)
     print(np.amin(entropies), np.amax(entropies))
