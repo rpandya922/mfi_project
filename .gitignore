@@ -2,7 +2,7 @@
 
 .vscode
 
-data/*
+data/train_loss.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
