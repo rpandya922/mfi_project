@@ -19,17 +19,20 @@ def rollout_control(agent : BaseAgent, controls, modify=False):
         xs.append(agent.x.copy())
     return np.hstack(xs)
 
-def get_robot_plan(robot : Robot, horizon=5, return_controls=False, xr0=None):
+def get_robot_plan(robot : Robot, horizon=5, return_controls=False, xr0=None, goal=None):
     # ignore safe control for plan
     if xr0 is None:
         robot_x = robot.x
     else:
         robot_x = xr0
 
+    if goal is None:
+        goal = robot.goal
+
     robot_states = np.zeros((robot.dynamics.n, horizon))
     robot_controls = np.zeros((robot.dynamics.m, horizon))
     for i in range(horizon):
-        goal_u = robot.dynamics.get_goal_control(robot_x, robot.goal)
+        goal_u = robot.dynamics.get_goal_control(robot_x, goal)
         robot_x = robot.dynamics.step(robot_x, goal_u)
         robot_states[:,[i]] = robot_x
         robot_controls[:,[i]] = goal_u

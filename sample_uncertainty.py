@@ -11,16 +11,64 @@ from dynamics import DIDynamics
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
 from intention_predictor import create_model
-from intention_utils import initialize_problem, overlay_timesteps
+from intention_utils import initialize_problem, overlay_timesteps, get_robot_plan
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def sample_xr_plan(execute_sample=True):
+def max_entropy(probs):
+    logits = torch.log2(probs)
+    entropy = -torch.sum(probs * logits, dim=1).detach().numpy()
+    entropy = np.nan_to_num(entropy, nan=-np.inf)
+
+    max_ent_idx = np.argmax(entropy)
+    return max_ent_idx
+
+def min_entropy(probs):
+    logits = torch.log2(probs)
+    entropy = -torch.sum(probs * logits, dim=1).detach().numpy()
+    entropy = np.nan_to_num(entropy, nan=np.inf)
+
+    min_ent_idx = np.argmin(entropy)
+    return min_ent_idx
+
+def zero_prob(probs):
+    # find the index that gives lowest probability on any one goal
+    pp = probs.detach().numpy()
+    return np.argmin(np.min(pp, axis=1))
+
+def random_samples(robot, u_max, k_plan, n_sample):
+    # returns randomly sampled plans for the robot
+    sampled_u = np.random.uniform(low=-u_max, high=u_max, size=(robot.dynamics.m, k_plan, n_sample))
+    x0 = robot.x
+
+    x_samples = np.zeros((robot.dynamics.n, k_plan, n_sample))
+    # create state trajectories from random controls
+    for j in range(k_plan):
+        x0 = (robot.dynamics.A @ x0) + (robot.dynamics.B @ sampled_u[:,j,:])
+        x_samples[:,j,:] = x0
+
+    xr_plan = torch.tensor(x_samples).float().transpose(0, 2)
+
+    return sampled_u, xr_plan
+
+def goal_plans(robot, u_max, k_plan):
+    # return one plan for reaching towards each goal
+    xr_plans = []
+    ur_plans = []
+    for i in range(robot.goals.shape[1]):
+        goal = robot.goals[:,[i]]
+        x0 = robot.x.copy()
+        xr_plan, ur_plan = get_robot_plan(robot=robot, horizon=k_plan, xr0=x0, goal=goal, return_controls=True)
+        xr_plans.append(xr_plan)
+        ur_plans.append(ur_plan)
+
+    return np.dstack(ur_plans), torch.tensor(np.dstack(xr_plans)).float().transpose(0, 2)
+
+def sample_xr_plan(execute_sample=True, objective_fn=max_entropy, xr_sampler=random_samples):
     ts = 0.05
     horizon = 100
     k_hist = 5
     k_plan = 20
-    n_sample = 10000
     u_max = 10
 
     model = create_model(horizon_len=k_plan)
@@ -70,30 +118,28 @@ def sample_xr_plan(execute_sample=True):
             xh_hist = xh_traj[:,i-k_hist+1:i+1]
             xr_hist = xr_traj[:,i-k_hist+1:i+1]
 
-            sampled_u = np.random.uniform(low=-u_max, high=u_max, size=(robot.dynamics.m, k_plan, n_sample))
-            x0 = robot.x
+            # sampled_u = np.random.uniform(low=-u_max, high=u_max, size=(robot.dynamics.m, k_plan, n_sample))
+            # x0 = robot.x
 
-            x_samples = np.zeros((robot.dynamics.n, k_plan, n_sample))
-            # create state trajectories from random controls
-            for j in range(k_plan):
-                x0 = (robot.dynamics.A @ x0) + (robot.dynamics.B @ sampled_u[:,j,:])
-                x_samples[:,j,:] = x0
+            # x_samples = np.zeros((robot.dynamics.n, k_plan, n_sample))
+            # # create state trajectories from random controls
+            # for j in range(k_plan):
+            #     x0 = (robot.dynamics.A @ x0) + (robot.dynamics.B @ sampled_u[:,j,:])
+            #     x_samples[:,j,:] = x0
 
-            xr_plan = torch.tensor(x_samples).float().transpose(0, 2)
+            # xr_plan = torch.tensor(x_samples).float().transpose(0, 2)
+            sampled_u, xr_plan = xr_sampler(robot, u_max, k_plan)
+            n_sample = sampled_u.shape[2]
             traj_hist = torch.tensor(np.hstack((xh_hist.T, xr_hist.T))).float().unsqueeze(0).repeat(n_sample, 1, 1)
             goals_in = torch.tensor(goals).float().unsqueeze(0).repeat(n_sample, 1, 1)
 
             model_outs = model(traj_hist, xr_plan, goals_in)
             probs = softmax(model_outs)
-            logits = torch.log2(probs)
-            entropy = -torch.sum(probs * logits, dim=1).detach().numpy()
-            entropy = np.nan_to_num(entropy, nan=-np.inf)
 
-            # max_ent_idx = np.argmax(entropy)
-            max_ent_idx = np.argmin(entropy)
-            print(probs[max_ent_idx].detach().numpy())
-            xr_plans[:,:,i] = xr_plan[max_ent_idx,:,:].T
-            ur_plan = sampled_u[:,:,max_ent_idx]
+            optimal_plan_idx = objective_fn(probs)
+            print(probs[optimal_plan_idx].detach().numpy())
+            xr_plans[:,:,i] = xr_plan[optimal_plan_idx,:,:].T
+            ur_plan = sampled_u[:,:,optimal_plan_idx]
 
             # plot optimized plan (if execute_sample is False)
             if not execute_sample:
@@ -136,4 +182,7 @@ def sample_xr_plan(execute_sample=True):
     plt.show()
     
 if __name__ == "__main__":
-    sample_xr_plan(execute_sample=True)
+    n_sample = 1000
+    # xr_sampler = lambda robot, u_max, k_plan: random_samples(robot, u_max, k_plan, n_sample=n_sample)
+    xr_sampler = goal_plans
+    sample_xr_plan(execute_sample=True, objective_fn=zero_prob, xr_sampler=xr_sampler)
