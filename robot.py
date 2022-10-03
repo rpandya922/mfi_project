@@ -5,7 +5,7 @@ from agent import BaseAgent
 from dynamics import Dynamics
 
 class Robot(BaseAgent):
-    def __init__(self, x0, dynamics : Dynamics, goal, dmin=3, eta=10, k_phi=0.1, lambda0=10):
+    def __init__(self, x0, dynamics : Dynamics, goal, safe_control=True, dmin=3, eta=10, k_phi=0.1, lambda0=10):
         self.x = x0
         self.dynamics = dynamics
         # TODO: change this to take in a set of goals 
@@ -18,6 +18,7 @@ class Robot(BaseAgent):
         self.eta = eta
         self.k_phi = k_phi
         self.lambda0 = lambda0
+        self.safe_control = safe_control
 
     def get_goal(self):
         return self.goal
@@ -123,12 +124,14 @@ class Robot(BaseAgent):
 
     def get_u(self, xh, xr_prev, xh_prev):
         # get control that moves robot towards goal
-        goal_u = self.dynamics.get_goal_control(self.x, self.goal)
+        u = self.dynamics.get_goal_control(self.x, self.goal)
 
         # project to set of safe controls
-        safe_u = self.get_safe_control(xh, xr_prev, xh_prev, goal_u)
+        if self.safe_control:
+            u = self.get_safe_control(xh, xr_prev, xh_prev, u)
+        # safe_u = self.get_safe_control(xh, xr_prev, xh_prev, goal_u)
 
-        return safe_u
+        return u
 
     def step(self, u):
         self.x = self.dynamics.step(self.x, u)

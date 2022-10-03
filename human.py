@@ -86,7 +86,7 @@ class RuleBasedHuman(Human):
         #     dists[min_i] = np.inf
         #     min_i = np.argmin(dists)
         #     goal = self.goals[:,[min_i]]
-        
+        min_i = 0
         if min_i == min_i_robot and dists[min_i] > dists_robot[min_i_robot]:
             import ipdb; ipdb.set_trace()
             # randomly select a new goal (that's different from the previous goal) if the robot is closer

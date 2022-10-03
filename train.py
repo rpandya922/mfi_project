@@ -61,7 +61,7 @@ class FC(nn.Module):
         x = torch.cat((x1.flatten(start_dim=1), x2.flatten(start_dim=1), x3.flatten(start_dim=1)), dim=1)
         return self.fc2(self.relu(self.fc1(x)))
 
-if __name__ == "__main__":
+def train_sim():
     horizon = 20
     # load npz dataset file
     # traj_data = np.load("./data/simulated_interactions.npz")
@@ -69,6 +69,7 @@ if __name__ == "__main__":
     # traj_data = np.load("./data/simulated_interactions_rule.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
+    import ipdb; ipdb.set_trace()
 
     # validation data
     # traj_data = np.load("./data/simulated_interactions2.npz")
@@ -95,3 +96,15 @@ if __name__ == "__main__":
     plt.legend()
     # plt.show()
     plt.savefig("./data/train_loss.png")
+
+def train_bis_sim():
+    horizon = 20
+    # load npz dataset file
+    traj_data = np.load("/Users/rapandya/dev/research/BIS/data/simulated_interactions_train.npz")
+    dataset = SimTrajDataset(traj_data, horizon=horizon)
+    loader = DataLoader(dataset, batch_size=128, shuffle=True)
+    import ipdb; ipdb.set_trace()
+
+if __name__ == "__main__":
+    # train_bis_sim()
+    train_sim()

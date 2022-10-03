@@ -35,6 +35,7 @@ class DIDynamics(Dynamics):
         # save discrete-time LQR control
         K, _, _ = control.dlqr(self.A, self.B, 10*np.eye(self.n), np.eye(self.m))
         self.K = K
+        self.K2 = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
 
         self.gamma = 1
 
@@ -57,6 +58,6 @@ class DIDynamics(Dynamics):
         d = max(d, 0.1)
         # if d > 5:
         #     return np.zeros((self.m, 1))
-        u = (self.gamma / d**2) * self.K @ (x - xr)
+        u = (self.gamma / d**2) * self.K2 @ (x - xr)
 
         return u

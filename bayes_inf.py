@@ -81,7 +81,7 @@ class BayesEstimator():
 # TODO: is it better to have Human and BayesHuman inherit from a BaseHuman or just do it this way?
 class BayesHuman(Human):
     def __init__(self, x0, dynamics : Dynamics, goals, belief : BayesEstimator, gamma=1):
-        super(BayesHuman, self).__init__(x0, dynamics, goals, gamma)
+        super(BayesHuman, self).__init__(x0, dynamics, goals, gamma=gamma)
         self.belief = belief
 
         # goal is initially set randomly

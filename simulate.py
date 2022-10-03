@@ -22,9 +22,9 @@ def simulate_interaction(horizon=200):
     dynamics_h = DIDynamics(ts)
     dynamics_r = DIDynamics(ts)
     # human = Human(xh0, dynamics_h, goals)
-    # belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=1)
-    # human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
-    human = RuleBasedHuman(xh0, dynamics_h, goals)
+    belief = BayesEstimator(thetas=goals, dynamics=dynamics_r, beta=1)
+    human = BayesHuman(xh0, dynamics_h, goals, belief, gamma=1)
+    # human = RuleBasedHuman(xh0, dynamics_h, goals)
     robot = Robot(xr0, dynamics_r, r_goal)
 
     xh_traj = np.zeros((4, horizon))
