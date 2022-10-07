@@ -6,7 +6,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
 
 class SimTrajDataset(Dataset):
-    def __init__(self, data, history : int = 5, horizon : int = 5, mode : str = "train"):
+    def __init__(self, data, history : int = 5, horizon : int = 5, mode : str = "train", goal_mode : str = "static"):
         self.mode = mode
         self.history = history
         self.horizon = horizon
@@ -36,8 +36,14 @@ class SimTrajDataset(Dataset):
                 # LSTM expects input of size (sequence length, # features) [batch size dealth with separately]
                 input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device)) # shape (5,8)
                 robot_future.append(torch.tensor(xr_future.T).float().to(device)) # shape (5,4)
-                input_goals.append(torch.tensor(goals[:,:,i]).float().to(device)) # shape (4,3)
-                labels.append(torch.tensor(chosen_goal_idx[i]).to(device))
+                if goal_mode == "static":
+                    input_goals.append(torch.tensor(goals[:,:,i]).float().to(device)) # shape (4,3)
+                    labels.append(torch.tensor(chosen_goal_idx[i]).to(device))
+                elif goal_mode == "dynamic":
+                    traj_goals = goals[0:4,:,:,i]
+                    goals_hist = traj_goals[:,:,j-history:j].reshape((traj_goals.shape[0]*traj_goals.shape[1],history))
+                    input_goals.append(torch.tensor(goals_hist.T).float().to(device)) # shape (5,12)
+                    labels.append(torch.tensor(chosen_goal_idx[j,i]).to(torch.int64).to(device))
 
         self.input_traj = input_traj
         self.robot_future = robot_future

@@ -69,7 +69,6 @@ def train_sim():
     # traj_data = np.load("./data/simulated_interactions_rule.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
-    import ipdb; ipdb.set_trace()
 
     # validation data
     # traj_data = np.load("./data/simulated_interactions2.npz")
@@ -101,10 +100,31 @@ def train_bis_sim():
     horizon = 20
     # load npz dataset file
     traj_data = np.load("/Users/rapandya/dev/research/BIS/data/simulated_interactions_train.npz")
-    dataset = SimTrajDataset(traj_data, horizon=horizon)
+    dataset = SimTrajDataset(traj_data, horizon=horizon, goal_mode="dynamic")
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
-    import ipdb; ipdb.set_trace()
+
+    # validation data
+    # TODO: use a different validation set
+    traj_data = np.load("/Users/rapandya/dev/research/BIS/data/simulated_interactions_train.npz")
+    val_dataset = SimTrajDataset(traj_data, horizon=horizon, goal_mode="dynamic")
+    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
+
+    predictor = create_model(horizon_len=horizon, goal_mode="dynamic")
+    predictor = predictor.to(device)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=50)
+
+    # save model
+    # TODO: don't overwrite existing model, save into new file based on date/time
+    torch.save(predictor.state_dict(), "./data/models/bis_intention_predictor.pt")
+
+    plt.plot(all_train_loss, label="train")
+    plt.plot(all_val_loss, label="val")
+    plt.yscale("log")
+    plt.legend()
+    # plt.show()
+    plt.savefig("./data/train_loss.png")
 
 if __name__ == "__main__":
-    # train_bis_sim()
-    train_sim()
+    train_bis_sim()
+    # train_sim()

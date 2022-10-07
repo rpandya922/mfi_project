@@ -12,7 +12,8 @@ class IntentionPredictor(nn.Module):
             hparams_rnn_plan : RNNParameters, 
             hparams_attn_hist : AttentionParameters,
             hparams_attn_plan : AttentionParameters,
-            hparams_linear : LinearParameters
+            hparams_linear : LinearParameters,
+            hparams_goal_hist : RNNParameters = None
         ):
         super(IntentionPredictor, self).__init__()
 
@@ -26,6 +27,11 @@ class IntentionPredictor(nn.Module):
         self.plan_attn = self._create_attention(hparams_attn_plan)
         # linear layers for classifier
         self.classifier = self._create_classifier(hparams_linear)
+        if hparams_goal_hist is not None:
+            self.goal_hist_encoder = self._create_encoder(hparams_goal_hist)
+            self.goal_hist = True
+        else:
+            self.goal_hist = False
 
     def _create_encoder(self, hparams):
         encoder = RNNEncoder(**hparams)
@@ -58,12 +64,17 @@ class IntentionPredictor(nn.Module):
         # flatten and concat outputs
         hist_enc_out = torch.flatten(hist_enc_out, start_dim=1)
         plan_enc_out = torch.flatten(plan_enc_out, start_dim=1)
-        goals = torch.flatten(goals, start_dim=1)
-        c_in = torch.cat((hist_enc_out, plan_enc_out, goals), dim=1)
+        if self.goal_hist:
+            goal_hist_enc_out = self.goal_hist_encoder(goals)[0]
+            goal_hist_enc_out = torch.flatten(goal_hist_enc_out, start_dim=1)
+            c_in = torch.cat((hist_enc_out, plan_enc_out, goal_hist_enc_out), dim=1)
+        else:
+            goals = torch.flatten(goals, start_dim=1)
+            c_in = torch.cat((hist_enc_out, plan_enc_out, goals), dim=1)
 
         return self.classifier(c_in)
 
-def create_model(horizon_len=5):
+def create_model(horizon_len=5, goal_mode : str = "static"):
     # TODO: figure out where this should be stored
     seq_len = 5
     state_dim = 4
@@ -92,13 +103,28 @@ def create_model(horizon_len=5):
                     )
 
     # create LinearParameters object
-    fc_params = LinearParameters(
-                    in_dim=(128*seq_len + (128*horizon_len) + state_dim*n_goals),
+    if goal_mode == "dynamic":
+        goal_hist_params = RNNParameters(
+                        feat_dim=12,
+                        num_layers=2,
+                        hidden_size=128,
+                        droupout_fc=0.0
+                        )
+        fc_params = LinearParameters(
+                    in_dim=128*seq_len*2 + (128*horizon_len),
                     out_dim=3,
                     n_hidden=2,
                     hidden_dim=128
                     )
+    elif goal_mode == "static":
+        goal_hist_params = None
+        fc_params = LinearParameters(
+                        in_dim=(128*seq_len + (128*horizon_len) + state_dim*n_goals),
+                        out_dim=3,
+                        n_hidden=2,
+                        hidden_dim=128
+                        )
 
-    model = IntentionPredictor(rnn_hist_params, rnn_plan_params, attn_params, attn_params, fc_params)
+    model = IntentionPredictor(rnn_hist_params, rnn_plan_params, attn_params, attn_params, fc_params, goal_hist_params)
 
     return model
