@@ -2,12 +2,14 @@ from collections import deque
 import os
 import numpy as np
 import rospy
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float64MultiArray
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 import transforms3d.quaternions as quat
 import transforms3d.affines as aff
 from ros_openpose_rs2_msgs.msg import HPoseSync
 from ar_track_alvar_msgs.msg import AlvarMarkers
+import tf
+import time
 
 from game_state import GameState
 
@@ -15,6 +17,7 @@ wrist_pts = deque()
 robot_pts = deque()
 buffer_size = 10
 ar_tf = np.eye(4)
+can_pos = deque()
 
 static_tf = np.eye(4)
 static_tf[0:,3] = np.array([0.02, 0.02, 0.0, 1.0])
@@ -130,9 +133,9 @@ def ar_callback(msg):
     # print position of ar tag in the kinova base frame
     marker_6_pos = marker_6.pose.position
     m6_coord = np.array([marker_6_pos.x, marker_6_pos.y, marker_6_pos.z, 1.0])
-    m6_coord2 =  T8_inv @ T21 @ m6_coord
+    m6_coord2 =  T8_inv.dot(T21).dot(m6_coord)
 
-    print(m6_coord2)
+    # print m6_coord2
 
 
 # xyz: [0.375, -0.259, 0] wxyz: [0, 0.707, 0.707, 0]
@@ -154,34 +157,79 @@ if __name__=="__main__":
                                                 [0, 0, 1]]))
 
     kinova_control_pub = rospy.Publisher("/kinova_demo/pose_cmd", PoseStamped, queue_size=1)
+    kinova_grasp_pub = rospy.Publisher("/siemens_demo/gripper_cmd", Float64MultiArray, queue_size=1)
     kinova_gripper_sub = rospy.Subscriber("/kinova/current_position", Point, robot_callback, queue_size=1)
     if use_openpose:
         body_sub = rospy.Subscriber("/rs_openpose_3d/human_pose_sync", HPoseSync, body_callback, queue_size=1)
 
     ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, ar_callback, queue_size=1)
 
+    listener = tf.TransformListener()
+
     game = GameState()
-    curr_action = "nav"
+    curr_action = "sense"
     r = rospy.Rate(10)
+    desired_pose = []
+    pose_reached = False
     while not rospy.is_shutdown():
 
-        # face_pose1 = [0.3, -0.4, 0.2, 0, 0.526, 0.850, 0]
-        # face_pose2 = [0.3, -0.4, 0.2, 0, -0.943, -0.332, 0]
-        can_pose = [0.375, -0.259, 0, 0, 0.707, 0.707, 0]
-        pose_msg = PoseStamped()
-        pose_msg.pose = ComposePoseFromTransQuat(can_pose)
+        if curr_action == "sense":
+            try:
+                (trans, rot) = listener.lookupTransform("/kinova_base", "/ar_marker_6", rospy.Time(0))
+                can_pose = [0.375, -0.259, 0, 0, 0.707, 0.707, 0]
+                can_pose[:2] = trans[:2]
+                can_pos.append(can_pose)
+            except:
+                pass
+            if len(can_pos) >= buffer_size:
+                curr_action = "nav"
 
+        # publishing messages for actions
         if curr_action == "nav":
-            pass
-            # kinova_control_pub.publish(pose_msg)
-        elif curr_action == "lower":
-            pass
-            # pose_msg.pose.position.z = 0.2
-            # kinova_control_pub.publish(pose_msg)
-        
-        if len(robot_pts) > 0:
-            if np.linalg.norm(np.array(can_pose[:3]) - robot_pts[-1]) < 0.1:
+            can_pose = can_pos[-1]
+            desired_pose = can_pose
+            pose_msg = PoseStamped()
+            pose_msg.pose = ComposePoseFromTransQuat(can_pose)
+            kinova_control_pub.publish(pose_msg)
+            if pose_reached:
                 curr_action = "lower"
+                pose_reached = False
+                desired_pose = []
+        elif curr_action == "lower":
+            can_pose = can_pos[-1]
+            can_pose[2] = -0.12
+            desired_pose = can_pose
+            pose_msg = PoseStamped()
+            pose_msg.pose = ComposePoseFromTransQuat(can_pose)
+            kinova_control_pub.publish(pose_msg)
+            if pose_reached:
+                curr_action = "grasp"
+                pose_reached = False
+                desired_pose = []
+        elif curr_action == "grasp":
+            g_cmd = Float64MultiArray()
+            g_cmd.data = [0]
+            kinova_grasp_pub.publish(g_cmd)
+            curr_action = "raise"
+        elif curr_action == "raise":
+            time.sleep(0.5)
+            can_pose = can_pos[-1]
+            can_pose[2] = 0.2
+            desired_pose = can_pose
+            pose_msg = PoseStamped()
+            pose_msg.pose = ComposePoseFromTransQuat(can_pose)
+            kinova_control_pub.publish(pose_msg)
+            if pose_reached:
+                curr_action = "none"
+                pose_reached = False
+                desired_pose = []
+        elif curr_action == "none":
+            break
+        
+        # checking if desired position is reached
+        if len(robot_pts) > 0 and desired_pose != []:
+            if np.linalg.norm(np.array(desired_pose[:3]) - robot_pts[-1]) < 0.01:
+                pose_reached = True
 
         if len(wrist_pts) < buffer_size:
             # rospy.loginfo("waiting for queue data")
