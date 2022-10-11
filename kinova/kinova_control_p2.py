@@ -10,8 +10,6 @@ from ros_openpose_rs2_msgs.msg import HPoseSync
 from ar_track_alvar_msgs.msg import AlvarMarkers
 import tf
 import time
-import tf2_ros
-import yaml
 
 from game_state import GameState
 
@@ -145,7 +143,7 @@ def ar_callback(msg):
 if __name__=="__main__":
 
     # TODO: make these a set of command line arguments
-    use_openpose = False
+    use_openpose = True
 
     rospy.init_node("mfi_demo")
 
@@ -177,6 +175,11 @@ if __name__=="__main__":
     pose_reached = False
     time.sleep(2)
     while not rospy.is_shutdown():
+
+        if len(wrist_pts) < buffer_size:
+            # rospy.loginfo("waiting for queue data")
+            continue
+
         if curr_action == "sense":
             if len(marker_pts) == 0:
                 curr_action = "none"
@@ -303,10 +306,5 @@ if __name__=="__main__":
         if len(robot_pts) > 0 and desired_pose != []:
             if np.linalg.norm(np.array(desired_pose[:3]) - robot_pts[-1]) < 0.01:
                 pose_reached = True
-
-        if len(wrist_pts) < buffer_size:
-            # rospy.loginfo("waiting for queue data")
-            continue
-        # print(wrist_pts[-1])
 
         r.sleep()
