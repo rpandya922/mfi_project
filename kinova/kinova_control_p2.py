@@ -10,6 +10,8 @@ from ros_openpose_rs2_msgs.msg import HPoseSync
 from ar_track_alvar_msgs.msg import AlvarMarkers
 import tf
 import time
+import tf2_ros
+import yaml
 
 from game_state import GameState
 
@@ -17,7 +19,8 @@ wrist_pts = deque()
 robot_pts = deque()
 buffer_size = 10
 ar_tf = np.eye(4)
-can_pos = deque()
+ar_markers = [5, 6, 7]
+marker_pts = [deque() for _ in ar_markers]
 
 static_tf = np.eye(4)
 static_tf[0:,3] = np.array([0.02, 0.02, 0.0, 1.0])
@@ -162,27 +165,77 @@ if __name__=="__main__":
     if use_openpose:
         body_sub = rospy.Subscriber("/rs_openpose_3d/human_pose_sync", HPoseSync, body_callback, queue_size=1)
 
+    # ar tracking
     ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, ar_callback, queue_size=1)
-
     listener = tf.TransformListener()
+    remove_counter = [0 for _ in ar_markers] # used to detect if marker is no longer visible (presumably moved by human)
 
     game = GameState()
     curr_action = "sense"
     r = rospy.Rate(10)
     desired_pose = []
     pose_reached = False
+    time.sleep(2)
     while not rospy.is_shutdown():
-
         if curr_action == "sense":
-            try:
-                (trans, rot) = listener.lookupTransform("/kinova_base", "/ar_marker_6", rospy.Time(0))
-                can_pose = [0.375, -0.259, 0, 0, 0.707, 0.707, 0]
-                can_pose[:2] = trans[:2]
-                can_pos.append(can_pose)
-            except:
-                pass
-            if len(can_pos) >= buffer_size:
+            if len(marker_pts) == 0:
+                curr_action = "none"
+                continue
+            # frames_dict = yaml.safe_load(tf_buffer.all_frames_as_yaml())
+            # print frames_dict.keys()
+            for marker_i, marker in enumerate(ar_markers):                    
+                marker_topic = "ar_marker_" + str(marker)
+                # if marker_topic not in frames_dict.keys():
+                #     print marker_topic + " not found"
+                try:
+                    (trans, rot) = listener.lookupTransform("/kinova_base", "/" + marker_topic, rospy.Time(0))
+                    block_pose = [0.375, -0.259, -0.1, 0, 0.707, 0.707, 0]
+                    block_pose[:2] = trans[:2]
+                    block_pose[0] = block_pose[0] + 0.02
+                    block_pose[1] = block_pose[1] + 0.02
+                    marker_pts[marker_i].append(block_pose)
+                except (tf.ExtrapolationException, tf.LookupException) as e:
+                    # print "lookup exception"
+                    remove_counter[marker_i] += 1
+                except Exception as e:
+                    # print e
+                    pass
+            # print remove_counter
+
+            # NOTE: slightly unstable
+            # check if we need to remove any markers
+            to_delete = [i for i in range(len(remove_counter)) if (remove_counter[i] > 9)]
+            ar_markers_new = []
+            remove_counter_new = []
+            marker_pts_new = []
+            for marker_i, marker in enumerate(ar_markers):
+                if marker_i in to_delete:
+                    print "marker " + str(marker) + " not seen for 10 steps"
+                    continue
+                ar_markers_new.append(marker)
+                remove_counter_new.append(remove_counter[marker_i])
+                marker_pts_new.append(marker_pts[marker_i])
+            ar_markers = ar_markers_new
+            remove_counter = remove_counter_new
+            marker_pts = marker_pts_new
+
+            finished_sensing = False
+            for ii in range(len(ar_markers)):
+                if len(marker_pts[ii]) >= buffer_size:
+                    # if we see any AR tag for long enough, finish sensing (since some tags may not be visible)
+                    finished_sensing = True
+            # print([len(m) for m in marker_pts])
+            if finished_sensing:
                 curr_action = "nav"
+                while len(robot_pts) < 1:
+                    continue
+                    # TODO: detect which block is closest to the robot
+                robot_pos = robot_pts[-1]
+                marker_positions = np.array([m[-1] for m in marker_pts])
+                dists = np.linalg.norm(marker_positions[:,:3] - robot_pos, axis=1)
+                next_block_i = np.argmin(dists)
+
+                can_pos = marker_pts[next_block_i]
 
         # publishing messages for actions
         if curr_action == "nav":
@@ -197,7 +250,7 @@ if __name__=="__main__":
                 desired_pose = []
         elif curr_action == "lower":
             can_pose = can_pos[-1]
-            can_pose[2] = -0.12
+            can_pose[2] = -0.22
             desired_pose = can_pose
             pose_msg = PoseStamped()
             pose_msg.pose = ComposePoseFromTransQuat(can_pose)
@@ -212,17 +265,37 @@ if __name__=="__main__":
             kinova_grasp_pub.publish(g_cmd)
             curr_action = "raise"
         elif curr_action == "raise":
-            time.sleep(0.5)
+            time.sleep(1)
             can_pose = can_pos[-1]
-            can_pose[2] = 0.2
+            can_pose[2] = 0.1
             desired_pose = can_pose
             pose_msg = PoseStamped()
             pose_msg.pose = ComposePoseFromTransQuat(can_pose)
             kinova_control_pub.publish(pose_msg)
             if pose_reached:
-                curr_action = "none"
+                curr_action = "placing"
                 pose_reached = False
                 desired_pose = []
+        elif curr_action == "placing":
+            box_pose = [0.3, -0.5, 0.0, 0, 0.707, 0.707, 0]
+            desired_pose = box_pose
+            pose_msg = PoseStamped()
+            pose_msg.pose = ComposePoseFromTransQuat(box_pose)
+            kinova_control_pub.publish(pose_msg)
+            if pose_reached:
+                curr_action = "release"
+                pose_reached = False
+                desired_pose = []
+        elif curr_action == "release":
+            g_cmd = Float64MultiArray()
+            g_cmd.data = [1]
+            kinova_grasp_pub.publish(g_cmd)
+            curr_action = "sense"
+            # remove this AR tag from our list
+            del ar_markers[next_block_i]
+            # clear cached AR tag positions
+            marker_pts = [deque() for _ in ar_markers]
+            remove_counter = [0 for _ in ar_markers]
         elif curr_action == "none":
             break
         
