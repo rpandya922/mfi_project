@@ -10,6 +10,8 @@ venv2/
 
 data/train_loss.png
 
+*.bag
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
