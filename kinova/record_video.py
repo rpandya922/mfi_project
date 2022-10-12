@@ -8,7 +8,7 @@ front_vid = cv2.VideoCapture(11)
 front_vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 front_vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
-front_writer = cv2.VideoWriter('demo_front3.avi', 
+front_writer = cv2.VideoWriter('demo_front4.avi', 
                             cv2.VideoWriter_fourcc(*'MJPG'),
                             30, (1920, 1080))
 
@@ -16,7 +16,7 @@ side_vid = cv2.VideoCapture(13)
 side_vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 side_vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
-side_writer = cv2.VideoWriter('demo_side3.avi', 
+side_writer = cv2.VideoWriter('demo_side4.avi', 
                             cv2.VideoWriter_fourcc(*'MJPG'),
                             30, (1920, 1080))
 
@@ -27,7 +27,6 @@ while(True):
     side_ret, side_frame = side_vid.read()
     front_ret, front_frame = front_vid.read()
     if(not side_ret or not front_ret):
-        print(front_ret)
         continue
     # Display the resulting frame
     cv2.imshow('frame', side_frame)
