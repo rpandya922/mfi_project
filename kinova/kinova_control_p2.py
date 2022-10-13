@@ -213,7 +213,7 @@ if __name__=="__main__":
             marker_pts_new = []
             for marker_i, marker in enumerate(ar_markers):
                 if marker_i in to_delete:
-                    print "marker " + str(marker) + " not seen for 10 steps"
+                    # print "marker " + str(marker) + " not seen for 10 steps"
                     continue
                 ar_markers_new.append(marker)
                 remove_counter_new.append(remove_counter[marker_i])

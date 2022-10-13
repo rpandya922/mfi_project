@@ -1,10 +1,24 @@
-
 import sys
 sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
-# define a video capture object
+# [OUT OF DATE]
+# 0: nothing/broken
+# 1: front camera depth(?) map
+# 2: front camera normal rgb
+# 3: nothing/broken
+# 4: top camera depth(?) map
+# 5: top camera normal rgb
+# 6: nothing/broken
+# 7: top camera depth(?) map
+# 8: top camera normal rgb
+# 9: nothing/broken
+# 10: nothing/broken
+# 11: nothing/broken
+# 12: nothing/broken
+# 13: side camera depth(?) map (looks green)
+# 14: side camera normal rgb
 
-front_vid = cv2.VideoCapture(11)
+front_vid = cv2.VideoCapture(int(sys.argv[1]))
 front_vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 front_vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
@@ -12,26 +26,16 @@ front_writer = cv2.VideoWriter('demo_front4.avi',
                             cv2.VideoWriter_fourcc(*'MJPG'),
                             30, (1920, 1080))
 
-side_vid = cv2.VideoCapture(2)
-side_vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-side_vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
-side_writer = cv2.VideoWriter('demo_side4.avi', 
-                            cv2.VideoWriter_fourcc(*'MJPG'),
-                            30, (1920, 1080))
-
 while(True):
       
     # Capture the video frame
     # by frame
-    side_ret, side_frame = side_vid.read()
     front_ret, front_frame = front_vid.read()
-    if(not side_ret or not front_ret):
+    if(not front_ret):
         continue
     # Display the resulting frame
-    cv2.imshow('frame', side_frame)
+    cv2.imshow('frame', front_frame)
     front_writer.write(front_frame)
-    side_writer.write(side_frame)
     # the 'q' button is set as the
     # quitting button you may use any
     # desired button of your choice
@@ -39,7 +43,6 @@ while(True):
         break
   
 # After the loop release the cap object
-side_vid.release()
 front_vid.release()
 # Destroy all the windows
 cv2.destroyAllWindows()

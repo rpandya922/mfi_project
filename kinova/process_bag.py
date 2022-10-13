@@ -31,7 +31,7 @@ if __name__ == "__main__":
             if msg.body.size != 0:    
                 wrist_pt = msg.body.keypoints[4].position
                 wrist_pt = np.asarray([[wrist_pt.x], [wrist_pt.y], [wrist_pt.z], [1]])
-                wrist_pt = np.matmul(openpose_trans, wrist_pt)
+                # wrist_pt = np.matmul(openpose_trans, wrist_pt)
 
                 # wrist_pts.append([wrist_pt[0,0], wrist_pt[1,0], wrist_pt[2,0]])
                 get_h_pose = True
