@@ -118,25 +118,26 @@ def ReadCameraExtrinsic(cam_param_path, serial):
 
     return mat
 
-def ar_callback(msg):
-    markers = msg.markers
+# not needed. delete later
+# def ar_callback(msg):
+#     markers = msg.markers
 
-    marker_8 = max(markers, key=lambda x: x.id==8).pose
-    marker_6 = max(markers, key=lambda x: x.id==6).pose
+#     marker_8 = max(markers, key=lambda x: x.id==8).pose
+#     marker_6 = max(markers, key=lambda x: x.id==6).pose
 
-    Tw1 = PoseStamped_2_mat(marker_8)
-    Tw2 = PoseStamped_2_mat(marker_6)
-    T2w = T_inv(Tw2)
-    T21 = np.matmul(T2w, Tw1) 
+#     Tw1 = PoseStamped_2_mat(marker_8)
+#     Tw2 = PoseStamped_2_mat(marker_6)
+#     T2w = T_inv(Tw2)
+#     T21 = np.matmul(T2w, Tw1) 
 
-    T8_inv = T_inv(static_tf)
+#     T8_inv = T_inv(static_tf)
 
-    # print position of ar tag in the kinova base frame
-    marker_6_pos = marker_6.pose.position
-    m6_coord = np.array([marker_6_pos.x, marker_6_pos.y, marker_6_pos.z, 1.0])
-    m6_coord2 =  T8_inv.dot(T21).dot(m6_coord)
+#     # print position of ar tag in the kinova base frame
+#     marker_6_pos = marker_6.pose.position
+#     m6_coord = np.array([marker_6_pos.x, marker_6_pos.y, marker_6_pos.z, 1.0])
+#     m6_coord2 =  T8_inv.dot(T21).dot(m6_coord)
 
-    # print m6_coord2
+#     # print m6_coord2
 
 
 # xyz: [0.375, -0.259, 0] wxyz: [0, 0.707, 0.707, 0]
@@ -164,9 +165,13 @@ if __name__=="__main__":
         body_sub = rospy.Subscriber("/rs_openpose_3d/human_pose_sync", HPoseSync, body_callback, queue_size=1)
 
     # ar tracking
-    ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, ar_callback, queue_size=1)
+    # ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, ar_callback, queue_size=1)
     listener = tf.TransformListener()
     remove_counter = [0 for _ in ar_markers] # used to detect if marker is no longer visible (presumably moved by human)
+
+    # visual servoing with ar tag
+    desired_xy = np.array([0.01, 0.05])
+    Kp = 0.8*np.eye(2)
 
     game = GameState()
     curr_action = "sense"
@@ -176,9 +181,9 @@ if __name__=="__main__":
     time.sleep(2)
     while not rospy.is_shutdown():
 
-        if len(wrist_pts) < buffer_size:
-            # rospy.loginfo("waiting for queue data")
-            continue
+        # if len(wrist_pts) < buffer_size:
+        #     # rospy.loginfo("waiting for queue data")
+        #     continue
 
         if curr_action == "sense":
             if len(marker_pts) == 0:
@@ -213,7 +218,7 @@ if __name__=="__main__":
             marker_pts_new = []
             for marker_i, marker in enumerate(ar_markers):
                 if marker_i in to_delete:
-                    # print "marker " + str(marker) + " not seen for 10 steps"
+                    print "marker " + str(marker) + " not seen for 10 steps"
                     continue
                 ar_markers_new.append(marker)
                 remove_counter_new.append(remove_counter[marker_i])
@@ -247,6 +252,34 @@ if __name__=="__main__":
             pose_msg = PoseStamped()
             pose_msg.pose = ComposePoseFromTransQuat(can_pose)
             kinova_control_pub.publish(pose_msg)
+            if pose_reached:
+                curr_action = "align"
+                pose_reached = False
+                desired_pose = []
+        elif curr_action == "align":
+            marker = ar_markers[next_block_i]
+            try:
+                (trans, rot) = listener.lookupTransform("/camera_color_frame", "/ar_marker_" + str(marker), rospy.Time(0))
+
+                xy = np.array(trans[:2])
+                err = xy - desired_xy
+                # +y in gripper -> +x in pose of marker
+                # +x in gripper -> +y in pose of marker
+                # translate this error to a new pose command (coordinate system is different, flip x & y)
+                gripper_err = np.array([-err[1], -err[0]])
+
+                desired_pose = np.hstack((robot_pts[-1], [0, 0.707, 0.707, 0]))
+                desired_pose[:2] = (Kp.dot(gripper_err)) + desired_pose[:2]
+                can_pos = [desired_pose] # necessary for structure of other code
+
+                # publish new pose command
+                pose_msg = PoseStamped()
+                pose_msg.pose = ComposePoseFromTransQuat(desired_pose)
+                kinova_control_pub.publish(pose_msg)
+            except Exception as e:
+                # print e
+                pass
+
             if pose_reached:
                 curr_action = "lower"
                 pose_reached = False
