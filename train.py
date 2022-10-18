@@ -99,13 +99,13 @@ def train_sim():
 def train_bis_sim():
     horizon = 20
     # load npz dataset file
-    traj_data = np.load("/Users/rapandya/dev/research/BIS/data/simulated_interactions_train.npz")
+    traj_data = np.load("./data/BIS/simulated_interactions_train.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon, goal_mode="dynamic")
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     # TODO: use a different validation set
-    traj_data = np.load("/Users/rapandya/dev/research/BIS/data/simulated_interactions_train.npz")
+    traj_data = np.load("./data/BIS/simulated_interactions_test.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon, goal_mode="dynamic")
     val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
 

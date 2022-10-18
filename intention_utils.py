@@ -83,8 +83,8 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", 
     if goals:
         ax.scatter(goals[0], goals[2], c=['#3A637B', '#C4A46B', '#FF5A00'])
 
-    ax.set_ylim(-10, 10)
-    ax.set_xlim(-10, 10)
+    # ax.set_ylim(-10, 10)
+    # ax.set_xlim(-10, 10)
 
 
 def initialize_problem(ts=0.05, bayesian=False):
