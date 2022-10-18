@@ -1,4 +1,8 @@
+from __future__ import division
+from __future__ import print_function
+
 from collections import deque
+from threading import Lock
 import os
 import numpy as np
 import rospy
@@ -14,6 +18,8 @@ import time
 from game_state import GameState
 
 wrist_pts = deque()
+naive_intention = deque()
+intention_mutex = Lock()
 robot_pts = deque()
 buffer_size = 10
 ar_tf = np.eye(4)
@@ -64,6 +70,35 @@ def ComposePoseFromTransQuat(data_frame):
     pose.orientation.z = data_frame[6]
     return pose
 
+def naive_intention_pred():
+    global naive_intention, wrist_pts
+    xyz = []
+    for marker_i, marker in enumerate(ar_markers):
+        if len(marker_pts[marker_i]) < 5:
+            continue
+        # take the average position of the marker
+        marker_xyz = np.array(marker_pts[marker_i])[:,:3].mean(axis=0)
+        xyz.append(marker_xyz)
+    xyz = np.array(xyz)
+    if len(wrist_pts) < 2 or len(xyz) == 0:
+        return
+    # compute velocity of the human wrist
+    vel = wrist_pts[-1] - wrist_pts[-2]
+    if np.linalg.norm(vel) < 1e-5:
+        return
+    vel = vel[:3] # remove homogeneous coordinate
+    dir = vel / np.linalg.norm(vel)
+    # import pdb; pdb.set_trace()
+    # compute the angle between velocity and all markers
+    dot_products = xyz.dot(dir)
+    cosines = dot_products / np.linalg.norm(xyz, axis=1) / np.linalg.norm(dir)
+    angles = np.arccos(np.clip(cosines, -1.0, 1.0))
+    intention_mutex.acquire()
+    naive_intention.append(ar_markers[np.argmin(angles)])
+    while len(naive_intention) > buffer_size:
+        naive_intention.popleft()
+    intention_mutex.release()
+
 def body_callback(msg):
     global wrist_pts, buffer_size
     try:
@@ -71,6 +106,7 @@ def body_callback(msg):
         wrist_pt = msg.body.keypoints[4].position
         wrist_pt = np.array([wrist_pt.x, wrist_pt.y, wrist_pt.z, 1])[:,None]
         wrist_pts.append(np.matmul(openpose_trans, wrist_pt).flatten())
+        naive_intention_pred()
         while len(wrist_pts) > buffer_size:
             wrist_pts.popleft()
     except Exception:
@@ -118,29 +154,6 @@ def ReadCameraExtrinsic(cam_param_path, serial):
 
     return mat
 
-# not needed. delete later
-# def ar_callback(msg):
-#     markers = msg.markers
-
-#     marker_8 = max(markers, key=lambda x: x.id==8).pose
-#     marker_6 = max(markers, key=lambda x: x.id==6).pose
-
-#     Tw1 = PoseStamped_2_mat(marker_8)
-#     Tw2 = PoseStamped_2_mat(marker_6)
-#     T2w = T_inv(Tw2)
-#     T21 = np.matmul(T2w, Tw1) 
-
-#     T8_inv = T_inv(static_tf)
-
-#     # print position of ar tag in the kinova base frame
-#     marker_6_pos = marker_6.pose.position
-#     m6_coord = np.array([marker_6_pos.x, marker_6_pos.y, marker_6_pos.z, 1.0])
-#     m6_coord2 =  T8_inv.dot(T21).dot(m6_coord)
-
-#     # print m6_coord2
-
-
-# xyz: [0.375, -0.259, 0] wxyz: [0, 0.707, 0.707, 0]
 if __name__=="__main__":
 
     # TODO: make these a set of command line arguments
@@ -184,7 +197,9 @@ if __name__=="__main__":
         # if len(wrist_pts) < buffer_size:
         #     # rospy.loginfo("waiting for queue data")
         #     continue
-
+        intention_mutex.acquire()
+        print(naive_intention)
+        intention_mutex.release()
         if curr_action == "sense":
             if len(marker_pts) == 0:
                 curr_action = "none"
@@ -218,7 +233,7 @@ if __name__=="__main__":
             marker_pts_new = []
             for marker_i, marker in enumerate(ar_markers):
                 if marker_i in to_delete:
-                    print "marker " + str(marker) + " not seen for 10 steps"
+                    print("marker " + str(marker) + " not seen for 10 steps")
                     continue
                 ar_markers_new.append(marker)
                 remove_counter_new.append(remove_counter[marker_i])
