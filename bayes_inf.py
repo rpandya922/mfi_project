@@ -21,15 +21,15 @@ class BayesEstimator():
         self.belief = prior
 
         # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
-        # n_actions = 16
-        # angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
-        # all_actions = []
-        # for r in range(1, 20):
-        #     actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
-        #     all_actions.append(actions)
-        # self.actions = np.vstack(all_actions)
+        n_actions = 8
+        angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
+        all_actions = []
+        for r in range(1, 2):
+            actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
+            all_actions.append(actions)
+        self.actions = np.vstack(all_actions)
         
-        self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
+        # self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
 
     def project_action(self, action):
         # passed-in action will be a column vector
@@ -52,15 +52,15 @@ class BayesEstimator():
         opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
 
         # testing
-        dists = []
-        for s in next_states:
-            dd = []
-            for i in range(3):
-                t = self.thetas[:,[i]]
-                dd.append(np.linalg.norm(s - t))
-            dists.append(dd)
-        dists = np.array(dists)
-        assert np.isclose(dists, opt_rewards).all() # passes
+        # dists = []
+        # for s in next_states:
+        #     dd = []
+        #     for i in range(3):
+        #         t = self.thetas[:,[i]]
+        #         dd.append(np.linalg.norm(s - t))
+        #     dists.append(dd)
+        # dists = np.array(dists)
+        # assert np.isclose(dists, opt_rewards).all() # passes
 
         Q_vals = rs - opt_rewards
 
@@ -98,14 +98,18 @@ class BayesHuman(Human):
         r_goal = self.goals[:,[np.argmax(self.belief.belief)]]
 
         # if the estimated goal of the robot is the same as the human's current goal, change the goal
-        if np.linalg.norm(r_goal - self.goal) <= 1e-3:
-            # choose a new goal by selecting the closest goal that isn't the same as the robot's
-            dists = np.linalg.norm(self.goals - r_goal, axis=0)
-            dists[np.argmax(self.belief.belief)] = np.inf
-            g_idx = np.argmin(dists)
+        # if np.linalg.norm(r_goal - self.goal) <= 1e-3:
+        #     # choose a new goal by selecting the closest goal that isn't the same as the robot's
+        #     dists = np.linalg.norm(self.goals - r_goal, axis=0)
+        #     dists[np.argmax(self.belief.belief)] = np.inf
+        #     g_idx = np.argmin(dists)
             
-            # g_idx = np.random.randint(self.goals.shape[1])
-            self.goal = self.goals[:,[g_idx]]
+        #     # g_idx = np.random.randint(self.goals.shape[1])
+        #     self.goal = self.goals[:,[g_idx]]
+        # TODO: remove later, this is a temporary hack
+        # chooses goal to be the one the robot is least likely heading towards
+        g_idx = np.argmin(self.belief.belief)
+        self.goal = self.goals[:,[g_idx]]
         
         if get_idx:
             # compute the index of the human's current goal

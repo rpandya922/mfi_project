@@ -109,5 +109,9 @@ if __name__ == "__main__":
     # save_data(path="./data/simulated_interactions_bayes.npz")
     # save_data(path="./data/simulated_interactions_bayes2.npz", n_trajectories=200)
 
+    # version that makes human go to least-likely robot goal (ll = least likely)
+    # save_data(path="./data/simulated_interactions_bayes_ll.npz")
+    save_data(path="./data/simulated_interactions_bayes_ll2.npz", n_trajectories=200)
+
     # save_data(path="./data/simulated_interactions_rule.npz")
-    save_data(path="./data/simulated_interactions_rule2.npz", n_trajectories=200)
+    # save_data(path="./data/simulated_interactions_rule2.npz", n_trajectories=200)

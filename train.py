@@ -65,14 +65,17 @@ def train_sim():
     horizon = 20
     # load npz dataset file
     # traj_data = np.load("./data/simulated_interactions.npz")
-    traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    # traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    # version that makes human go to least-likely robot goal (ll = least likely)
+    traj_data = np.load("./data/simulated_interactions_bayes_ll.npz")
     # traj_data = np.load("./data/simulated_interactions_rule.npz")
     dataset = SimTrajDataset(traj_data, horizon=horizon)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
     # traj_data = np.load("./data/simulated_interactions2.npz")
-    traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    # traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    traj_data = np.load("./data/simulated_interactions_bayes_ll2.npz")
     # traj_data = np.load("./data/simulated_interactions_rule2.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon)
     val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
@@ -86,8 +89,37 @@ def train_sim():
     # save model
     # TODO: don't overwrite existing model, save into new file based on date/time
     # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_plan20.pt")
-    torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_bayes.pt")
+    # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_bayes.pt")
+    torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_bayes_ll.pt")
     # torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_rule.pt")
+
+    plt.plot(all_train_loss, label="train")
+    plt.plot(all_val_loss, label="val")
+    plt.yscale("log")
+    plt.legend()
+    # plt.show()
+    plt.savefig("./data/train_loss.png")
+
+def train_sim_noplan():
+    horizon = 20
+    # load npz dataset file
+    traj_data = np.load("./data/simulated_interactions_bayes.npz")
+    dataset = SimTrajDataset(traj_data, horizon=horizon)
+    loader = DataLoader(dataset, batch_size=128, shuffle=True)
+
+    # validation data
+    traj_data = np.load("./data/simulated_interactions_bayes2.npz")
+    val_dataset = SimTrajDataset(traj_data, horizon=horizon)
+    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
+
+    predictor = create_model(horizon_len=horizon, use_plan=False)
+    predictor = predictor.to(device)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=50)
+
+    # save model
+    # TODO: don't overwrite existing model, save into new file based on date/time
+    torch.save(predictor.state_dict(), "./data/models/sim_intention_predictor_bayes_noplan.pt")
 
     plt.plot(all_train_loss, label="train")
     plt.plot(all_val_loss, label="val")
@@ -126,5 +158,6 @@ def train_bis_sim():
     plt.savefig("./data/train_loss.png")
 
 if __name__ == "__main__":
-    train_bis_sim()
-    # train_sim()
+    # train_bis_sim()
+    train_sim()
+    # train_sim_noplan()

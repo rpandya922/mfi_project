@@ -53,7 +53,7 @@ def process_model_input(xh_hist, xr_hist, xr_plan, goals):
 
     return traj_hist, xr_plan, goals
 
-def overlay_timesteps(ax, xh_traj, xr_traj, goals, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
+def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
     
     if len(xh_traj) > 0:
         # human trajectory
