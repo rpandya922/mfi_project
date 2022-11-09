@@ -30,7 +30,10 @@ def isolated_human(human, robot, goals, horizon):
         ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        plt.pause(0.01)
+        img_path = f"./data/videos/mfi_demo/frames1"
+        img_path += f"/{i:03d}.png"
+        plt.savefig(img_path, dpi=300)
+        # plt.pause(0.01)
 
         # compute agent controls
         uh = human.get_u(robot.x)
@@ -52,7 +55,6 @@ def naive_robot(human, robot, goals, horizon):
     xh_traj[:,[0]] = xh
     xr_traj[:,[0]] = xr
     for i in range(horizon):
-        print(human.belief.belief)
         # plotting
         ax.cla()
         # plot trajectory trail so far
@@ -64,7 +66,29 @@ def naive_robot(human, robot, goals, horizon):
         ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        plt.pause(0.01)
+        img_path = f"./data/videos/mfi_demo/frames2"
+        img_path += f"/{i:03d}.png"
+        plt.savefig(img_path, dpi=300)
+        # plt.pause(0.01)
+
+        # compute the robot's prediction of the human's intention
+        if i < 5:
+            nominal_goal_idx = 1
+        else:
+            xh_hist = xh_traj[:,i-5:i]
+            xr_hist = xr_traj[:,i-5:i]
+            r_beliefs = []
+            for goal_idx in range(robot.goals.shape[1]):
+                goal = robot.goals[:,[goal_idx]]
+                # compute robot plan given this goal
+                # xr_plan = get_robot_plan(robot, horizon=20, goal=goal)
+                xr_plan = np.tile(robot.x, 20)
+
+                r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
+            # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
+            r_beliefs = np.array(r_beliefs)
+            r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
+            robot.set_goal(robot.goals[:,[r_goal_idx]])
 
         # compute agent controls
         uh = human.get_u(robot.x)
@@ -108,7 +132,10 @@ def robot_with_intention(human, robot, goals, horizon, model):
         ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        plt.pause(0.01)
+        img_path = f"./data/videos/mfi_demo/frames3"
+        img_path += f"/{i:03d}.png"
+        plt.savefig(img_path, dpi=300)
+        # plt.pause(0.01)
 
         # compute the robot's prediction of the human's intention
         if i < 5:
@@ -123,7 +150,7 @@ def robot_with_intention(human, robot, goals, horizon, model):
                 xr_plan = get_robot_plan(robot, horizon=20, goal=goal)
 
                 r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
-            # TODO: use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
+            # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
             r_beliefs = np.array(r_beliefs)
             r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
             robot.set_goal(robot.goals[:,[r_goal_idx]])
@@ -153,15 +180,15 @@ if __name__ == "__main__":
     k_plan = 20
 
     model = create_model(horizon_len=k_plan)
-    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes.pt", map_location=device))
+    model.load_state_dict(torch.load("./data/models/sim_intention_predictor_bayes_ll.pt", map_location=device))
     model.eval()
 
     xh0 = np.array([[1.0, 0.0, -1.0, 0.0]]).T
     xr0 = np.array([[-4.0, 0.0, 0.0, 0.0]]).T
 
     goals = np.array([
-        [2.0, 0.0, 6.0, 0.0],
         [1.0, 0.0, 6.0, 0.0],
+        [2.0, 0.0, 4.0, 0.0],
         [-8.0, 0.0, 8.0, 0.0]
     ]).T
     r_goal = goals[:,[0]]

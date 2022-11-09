@@ -108,7 +108,12 @@ class BayesHuman(Human):
         #     self.goal = self.goals[:,[g_idx]]
         # TODO: remove later, this is a temporary hack
         # chooses goal to be the one the robot is least likely heading towards
-        g_idx = np.argmin(self.belief.belief)
+        # if belief is uniform, choose the closest goal
+        if np.isclose(self.belief.belief, 1/self.belief.belief.shape[0]).all():
+            dists = np.linalg.norm(self.goals - self.x, axis=0)
+            g_idx = np.argmin(dists)
+        else:
+            g_idx = np.argmin(self.belief.belief)
         self.goal = self.goals[:,[g_idx]]
         
         if get_idx:
