@@ -194,9 +194,9 @@ if __name__=="__main__":
     time.sleep(2)
     while not rospy.is_shutdown():
 
-        # if len(wrist_pts) < buffer_size:
-        #     # rospy.loginfo("waiting for queue data")
-        #     continue
+        if len(wrist_pts) < buffer_size:
+            # rospy.loginfo("waiting for queue data")
+            continue
         intention_mutex.acquire()
         print(naive_intention)
         intention_mutex.release()
