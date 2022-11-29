@@ -9,6 +9,7 @@ from geometry_msgs.msg import Pose, PoseStamped, Point
 import transforms3d.quaternions as quat
 import transforms3d.affines as aff
 from mfi_kinova.srv import iterative_ik
+import time
 
 def ComposePoseFromTransQuat(data_frame):
     # assert (len(data_frame.shape) == 1 and data_frame.shape[0] == 7)
@@ -50,6 +51,23 @@ def publish_pose(desired_pose, curr_joint_state=None, cmd_type="joint"):
         pose_msg = PoseStamped()
         pose_msg.pose = ComposePoseFromTransQuat(desired_pose)
         cartesian_pub.publish(pose_msg)
+
+kinova_grasp_pub = rospy.Publisher("/siemens_demo/gripper_cmd", Float64MultiArray, queue_size=1)
+def close_gripper():
+    g_cmd = Float64MultiArray()
+    g_cmd.data = [0]
+    kinova_grasp_pub.publish(g_cmd)
+    # wait for gripper to close 
+    # TODO: get access to gripper status 
+    time.sleep(1)
+
+def open_gripper():
+    g_cmd = Float64MultiArray()
+    g_cmd.data = [1]
+    kinova_grasp_pub.publish(g_cmd)
+    # wait for gripper to open
+    # TODO: get access to gripper status 
+    time.sleep(1)
 
 def align_gripper():
     pass
