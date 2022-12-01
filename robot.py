@@ -1,4 +1,3 @@
-from tkinter import E
 import numpy as np
 
 from agent import BaseAgent

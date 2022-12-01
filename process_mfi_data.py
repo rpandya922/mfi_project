@@ -7,12 +7,12 @@ from intention_utils import overlay_timesteps
 
 if __name__ == "__main__":
     # read in wrist pose data
-    filename = "./kinova/data/wrist_pose3.txt"
+    filename = "./kinova/data/wrist_pose4.txt"
     df = pd.read_csv(filename, sep=" ", header=None)
     wrist_pos = df.to_numpy()
 
     # read in robot pose data
-    filename = "./kinova/data/robot_pose3.txt"
+    filename = "./kinova/data/robot_pose4.txt"
     df = pd.read_csv(filename, sep=" ", header=None)
     rob_pos = df.to_numpy()
     rob_pos[:,1] = -rob_pos[:,1]

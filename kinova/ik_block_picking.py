@@ -6,36 +6,58 @@ from collections import deque
 import numpy as np
 import rospy
 from std_msgs.msg import Float64MultiArray
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, PoseStamped
 from ar_track_alvar_msgs.msg import AlvarMarkers
+from ros_openpose_rs2_msgs.msg import HPoseSync
 import time
 
 from utils import close_gripper, open_gripper, publish_pose
 
+'''
+this code runs with SSA only if data is already streaming on openpose topics before starting the robot (with rosrun kinova kinova_bringup.launch)
+'''
+
 class BlockPickingTask():
     def __init__(self):
         self.robot_pts = deque()
+        self.human_wrist_pts = deque()
         self.buffer_size = 10
         self.robot_joint_state = []
         self.ar_marker_ids = [4, 5, 6] # all markers of interest (the ones that are on blocks)
         self.ar_markers = {id: None for id in self.ar_marker_ids}
         self.ar_markers_wrist = {id: None for id in self.ar_marker_ids}
         self.current_marker = self.ar_marker_ids[0]
-        # self.marker_xyz = []
-        # self.marker_wrist_xyz = []
         self.desired_pose = [0.3, -0.4, -0.1, 0, 0.707, 0.707, 0] # TOOL_POS from siemens demo
+        self.home_pose = [33.35, 34.65, 212.46, 272.44, 340.09, 296.42, 160.11]
 
         # for visual servoing with ar tag
         self.desired_xy = np.array([0.01, 0.06])
         self.Kp = 1.4*np.eye(2)
 
         self.state = "sense"
+        self.cmd_type = "joint"
 
         # TODO: read orientation from /kinova/pose_tool_in_base_fk
         self.position_sub = rospy.Subscriber("/kinova/current_position", Point, self.robot_cb, queue_size=1)
         self.joint_sub = rospy.Subscriber("/kinova/current_joint_state", Float64MultiArray, self.joint_cb, queue_size=1)
         self.ar_tag_base_sub = rospy.Subscriber("ar_marker_status", AlvarMarkers, self.ar_cb, queue_size=1)
         self.ar_tag_wrist_sub = rospy.Subscriber("ar_marker_wrist_status", AlvarMarkers, self.ar_wrist_cb, queue_size=1)
+        self.ssa_enable_pub = rospy.Publisher("/siemens_demo/ssa_enable", Float64MultiArray, queue_size=1)
+        self.human_pose_sub = rospy.Subscriber("/rs_openpose_3d/human_pose_sync", HPoseSync, self.human_cb, queue_size=1)
+
+        self.ssa = False
+
+    def human_cb(self, msg):
+        try:
+            wrist_pt = msg.body.keypoints[4].position
+            wrist_pt = np.array([wrist_pt.x, wrist_pt.y, wrist_pt.z, 1])[:,None]
+            # TODO: properly load in the openpose matrices for later data processing
+            # wrist_pts.append(np.matmul(openpose_trans, wrist_pt).flatten())
+            self.human_wrist_pts.append(wrist_pt)
+            while len(self.human_wrist_pts) > self.buffer_size:
+                self.human_wrist_pts.popleft()
+        except Exception as e:
+            pass
 
     def robot_cb(self, msg):
         try:
@@ -87,7 +109,18 @@ class BlockPickingTask():
         return (np.linalg.norm(np.array(self.desired_pose[:3]) - self.robot_pts[-1]) <= 1e-2)
 
     def run(self):
-        time.sleep(0.5)
+
+        if self.ssa and (len(self.human_wrist_pts) < self.buffer_size):
+            print("Waiting for human pose")
+            return
+
+        ssa_msg = Float64MultiArray()
+        if self.ssa:
+            ssa_msg.data = [1]
+        else:
+            ssa_msg.data = [0]
+        self.ssa_enable_pub.publish(ssa_msg)
+
         if self.state == "sense":
             current_marker = None
             for marker in self.ar_marker_ids:
@@ -105,7 +138,7 @@ class BlockPickingTask():
                 print("finished sensing")
                 self.state = "move_to_block"
         elif self.state == "move_to_block":
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished moving")
                 self.state = "sense_visual_servoing"
@@ -117,6 +150,9 @@ class BlockPickingTask():
         elif self.state == "visual_servoing":
             # xy = self.marker_wrist_xyz[:2]
             xy = self.ar_markers_wrist[self.current_marker]
+            if xy is None:
+                self.state = "sense"
+                return
             err = xy - self.desired_xy
             # +y in gripper -> +x in pose of marker
             # +x in gripper -> +y in pose of marker
@@ -126,14 +162,14 @@ class BlockPickingTask():
             desired_pose[:2] = (self.Kp.dot(gripper_err)) + desired_pose[:2]
             self.desired_pose = list(desired_pose)
 
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished servoing")
                 self.state = "lower_gripper"
                 self.desired_pose[:3] = self.robot_pts[-1]
-                self.desired_pose[2] = -0.22
+                self.desired_pose[2] = -0.18
         elif self.state == "lower_gripper":
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished lowering")
                 self.state = "grasp_block"
@@ -143,13 +179,13 @@ class BlockPickingTask():
             self.state = "move_block"
         elif self.state == "move_block":
             self.desired_pose[:3] = [0.3, -0.5, 0.0] # position of box/general drop location
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished moving block")
                 self.state = "lower_block"
                 self.desired_pose[2] = -0.1 # want to only set desired pose once
         elif self.state == "lower_block":
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished lowering block")
                 self.state = "drop_block"
@@ -159,7 +195,7 @@ class BlockPickingTask():
             self.state = "return_home"
         elif self.state == "return_home":
             self.desired_pose = [0.3, -0.4, 0.2, 0, 0.707, 0.707, 0]
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type="joint")
+            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("returned home")
                 self.state = "sense"
@@ -173,6 +209,7 @@ if __name__ == "__main__":
     task = BlockPickingTask()
 
     r = rospy.Rate(10)
+    time.sleep(0.5)
     while not rospy.is_shutdown():
         if task.run() == "done":
             break
