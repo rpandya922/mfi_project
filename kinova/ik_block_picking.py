@@ -13,9 +13,6 @@ import time
 
 from utils import close_gripper, open_gripper, publish_pose
 
-'''
-this code runs with SSA only if data is already streaming on openpose topics before starting the robot (with rosrun kinova kinova_bringup.launch)
-'''
 
 class BlockPickingTask():
     def __init__(self):
