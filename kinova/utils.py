@@ -52,6 +52,11 @@ def publish_pose(desired_pose, curr_joint_state=None, cmd_type="joint"):
         pose_msg.pose = ComposePoseFromTransQuat(desired_pose)
         cartesian_pub.publish(pose_msg)
 
+def publish_joint_state(joint_state):
+    joint_msg = Float64MultiArray()
+    joint_msg.data = joint_state
+    joint_pub.publish(joint_msg)
+
 kinova_grasp_pub = rospy.Publisher("/siemens_demo/gripper_cmd", Float64MultiArray, queue_size=1)
 def close_gripper():
     g_cmd = Float64MultiArray()
@@ -68,6 +73,3 @@ def open_gripper():
     # wait for gripper to open
     # TODO: get access to gripper status 
     time.sleep(1)
-
-def align_gripper():
-    pass
