@@ -21,8 +21,8 @@ if __name__ == "__main__":
 
     r = rospy.Rate(10)
 
-    desired_pose = [0.49, 0.083, -0.15, 0, 0.707, 0.707, 0]
-    # desired_pose = [0.3, 0.1, 0.1, 0, 0.707, 0.707, 0]
+    # desired_pose = [0.49, 0.083, -0.15, 0, 0.707, 0.707, 0]
+    desired_pose = [0.45, 0.1, 0.1, 0, 0.707, 0.707, 0]
     # equivalent joint state: [339.39, 24.35, 183.52, 231.28, 356.95, 333.01, 75.52]
     joint_sub = rospy.Subscriber("/kinova/current_joint_state", Float64MultiArray, joint_cb, queue_size=1)
 

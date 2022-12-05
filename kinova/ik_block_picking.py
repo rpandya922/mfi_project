@@ -220,7 +220,7 @@ class BlockPickingTask():
                 self.current_marker = current_marker
                 marker_position = self.get_last_position(self.ar_markers[self.current_marker])
                 self.desired_pose[:2] = marker_position
-                self.desired_pose[0] = 0.25
+                self.desired_pose[0] = 0.45
                 self.desired_pose[2] = -0.1
                 print("finished sensing")
                 self.state = "move_behind_block"
@@ -243,6 +243,8 @@ class BlockPickingTask():
             #     pass
             while self.is_deque_none(self.ar_markers_wrist[self.current_marker]):
                 pass
+            # always disable SSA after sensing for servoing so robot won't hit the table
+            self.ssa = False
             print("finished sensing for servoing")
             self.state = "visual_servoing"
         elif self.state == "visual_servoing":
@@ -280,7 +282,8 @@ class BlockPickingTask():
             publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("finished moving block")
-                self.state = "lower_block"
+                # self.state = "lower_block"
+                self.state = "drop_block"
                 self.desired_pose[2] = -0.1 # want to only set desired pose once
         elif self.state == "lower_block":
             publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
