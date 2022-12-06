@@ -2,22 +2,22 @@ import numpy as np
 import rosbag
 
 if __name__ == "__main__":
-    user_names = ["p4_1"]
-    modes = [3]
+    user_names = ["p5"]
+    modes = [1, 2, 3, 4]
     for user_name in user_names:
         for mode in modes:
             filepath = "./data/pilot_study/" + user_name + "/mode" + str(mode)
             bag = rosbag.Bag(filepath + ".bag")
-            bag_content = bag.read_messages()
+            human_topic = "/rs_openpose_3d/human_pose_sync"
+            robot_topic = "/kinova/pose_tool_in_world"
+            topics = [human_topic, robot_topic]
+            bag_content = bag.read_messages(topics=topics)
 
             wrist_pts = []
             robot_pts = []
             get_h_pose = False
             get_r_pose = False
             idx = 0
-
-            human_topic = "/rs_openpose_3d/human_pose_sync"
-            robot_topic = "/kinova/pose_tool_in_world"
 
             openpose_trans = np.matrix([[-0.9956066,  0.0936216,  0.0015747, 0.49533],
                                     [0.0899620,  0.9610820, -0.2612055, 0.273142],

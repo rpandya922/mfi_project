@@ -8,7 +8,7 @@ import time
 sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 
-user_name = "p5"
+user_name = "p6"
 # create folder for user if it doesn't exist
 folder = "./data/pilot_study/" + user_name
 if not os.path.exists(folder):
@@ -26,7 +26,7 @@ topics = ["/rs_openpose_3d/human_pose_sync",
           "/rs_openpose_3d/human_pose_sync",
           "/human_intention",
           "ar_marker_in_world",
-          "/cam_rs2/color/image_raw",
+        #   "/cam_rs2/color/image_raw",
           "/siemens_demo/joint_cmd",
           "/siemens_demo/gripper_cmd"]
 
