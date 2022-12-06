@@ -34,7 +34,8 @@ class BlockPickingTask():
 
         # for visual servoing with ar tag
         self.desired_xy = np.array([0.01, 0.06])
-        self.Kp = 1.4*np.eye(2)
+        # self.Kp = 1.4*np.eye(2)
+        self.Kp = 1.0*np.eye(2)
 
         self.state = "startup"
         self.cmd_type = "joint"
@@ -64,6 +65,7 @@ class BlockPickingTask():
             # mode 4
             self.ssa = True
             self.mode = "proactive"
+        self.debug = False
 
     # read naive intention prediction (from velocity vector)
     def intention_cb(self, msg):
@@ -140,6 +142,7 @@ class BlockPickingTask():
     def reached_desired(self):
         # TODO: compare orientation as well (use quaternion dot product & check for negative)
         return (np.linalg.norm(np.array(self.desired_pose[:3]) - self.robot_pts[-1]) <= 1e-2)
+        # return (np.linalg.norm(np.array(self.desired_pose[:3]) - self.robot_pts[-1]) <= 0.015)
 
     def reached_desired_easy(self):
         # TODO: compare orientation as well (use quaternion dot product & check for negative)
@@ -155,19 +158,30 @@ class BlockPickingTask():
                 all_none = False
         return all_none
 
-    def get_last_position(self, d):
+    def get_last_position(self, d, idx=0):
         last_position = None
+        count = 0
         for i in range(len(d)-1, -1, -1):
             e = d[i]
             if e is None:
                 continue
             else:
-                return e
+                if count == idx:
+                    return e
+                count += 1
 
     def choose_marker(self):
         current_marker = None
+        if not self.debug:
+            # wait for human to move instead of waiting for fixed time
+            curr_pos = np.array(self.get_last_position(self.human_wrist_pts, idx=0))
+            prev_pos = np.array(self.get_last_position(self.human_wrist_pts, idx=1))
+            print("waiting for human to move")
+            while np.linalg.norm(curr_pos - prev_pos) < 0.05:
+                curr_pos = np.array(self.get_last_position(self.human_wrist_pts, idx=0))
+                prev_pos = np.array(self.get_last_position(self.human_wrist_pts, idx=1))
+            print("human moved")
         if self.mode == "proactive":
-            time.sleep(1)
             # h_intention = stats.mode(self.human_intention)[0][0]
             h_intention = self.human_intention[-1]
             print(h_intention)
@@ -194,7 +208,7 @@ class BlockPickingTask():
 
     def run(self):
         # print(self.ar_markers)
-        if self.ssa and (len(self.human_wrist_pts) < self.buffer_size):
+        if not self.debug and (len(self.human_wrist_pts) < self.buffer_size):
             print("Waiting for human pose")
             return
 
@@ -224,11 +238,14 @@ class BlockPickingTask():
                 self.desired_pose[2] = -0.1
                 print("finished sensing")
                 self.state = "move_behind_block"
-        # TODO: add a position behind block to move towards first
         elif self.state == "move_behind_block":
             publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired_easy():
                 marker_position = self.get_last_position(self.ar_markers[self.current_marker])
+                if marker_position is None:
+                    # reset to startup
+                    self.state = "startup"
+                    return
                 self.desired_pose[:2] = marker_position
                 self.desired_pose[2] = -0.1
                 print("finished moving behind block")
@@ -241,17 +258,24 @@ class BlockPickingTask():
         elif self.state == "sense_visual_servoing":
             # while self.ar_markers_wrist[self.current_marker] is None:
             #     pass
+            t0 = time.time()
             while self.is_deque_none(self.ar_markers_wrist[self.current_marker]):
-                pass
+                # if we don't see the marker, just reset to startup
+                if (time.time() - t0) > 0.7:
+                    self.state = "startup"
+                    return
             # always disable SSA after sensing for servoing so robot won't hit the table
             self.ssa = False
             print("finished sensing for servoing")
             self.state = "visual_servoing"
         elif self.state == "visual_servoing":
+            # TODO: find out why servoing breaks sometimes (arm overshoots and can no longer see block but also doesn't get None as position)
+            # (I think calling -1 on the deque fixed it)
             # xy = self.marker_wrist_xyz[:2]
-            xy = self.get_last_position(self.ar_markers_wrist[self.current_marker])
+            # xy = self.get_last_position(self.ar_markers_wrist[self.current_marker])
+            xy = self.ar_markers_wrist[self.current_marker][-1]
             if xy is None:
-                self.state = "sense"
+                self.state = "startup"
                 return
             err = xy - self.desired_xy
             # +y in gripper -> +x in pose of marker
@@ -262,12 +286,16 @@ class BlockPickingTask():
             desired_pose[:2] = (self.Kp.dot(gripper_err)) + desired_pose[:2]
             self.desired_pose = list(desired_pose)
 
-            publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
+            res = publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
+            # check if IK results fail. generally this means the block is out of view
+            if res is None:
+                self.state = "startup"
+                return
             if self.reached_desired():
                 print("finished servoing")
                 self.state = "lower_gripper"
                 self.desired_pose[:3] = self.robot_pts[-1]
-                self.desired_pose[2] = -0.22 #-0.18
+                self.desired_pose[2] = -0.18
         elif self.state == "lower_gripper":
             publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
@@ -299,7 +327,8 @@ class BlockPickingTask():
             publish_pose(self.desired_pose, self.robot_joint_state, cmd_type=self.cmd_type)
             if self.reached_desired():
                 print("returned home")
-                self.state = "sense"
+                # self.state = "sense"
+                self.state = "done" # temporary for user study with only 2 blocks
         elif self.state == "done":
             return "done"
 

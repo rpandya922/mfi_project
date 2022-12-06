@@ -47,10 +47,12 @@ def publish_pose(desired_pose, curr_joint_state=None, cmd_type="joint"):
             joint_msg = Float64MultiArray()
             joint_msg.data = list(np.asarray(q_des).flatten())
             joint_pub.publish(joint_msg)
+            return "success"
     elif cmd_type == "cartesian":
         pose_msg = PoseStamped()
         pose_msg.pose = ComposePoseFromTransQuat(desired_pose)
         cartesian_pub.publish(pose_msg)
+        return "success"
 
 def publish_joint_state(joint_state):
     joint_msg = Float64MultiArray()
