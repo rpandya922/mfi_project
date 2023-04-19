@@ -15,7 +15,7 @@ class DIDynamics(Dynamics):
     """
     Double integrator linear dynamics
     """
-    def __init__(self, ts: float):
+    def __init__(self, ts: float, W : np.ndarray = None):
         """
         ts : sampling time
         """
@@ -39,9 +39,16 @@ class DIDynamics(Dynamics):
 
         self.gamma = 1
 
+        # add noise to dynamics (if given)
+         # W is 0-mean multivariate normal distribution covariance matrix
+        if W is not None:
+            self.W = W
+        else:
+            self.W = np.zeros((self.n, self.n))
+
 
     def step(self, x, u):
-        return self.A @ x + self.B @ u
+        return self.A @ x + self.B @ u + np.random.multivariate_normal(np.zeros(self.n), self.W, size=(1,)).T
 
     def get_goal_control(self, x, goal):
         # return LQR control

@@ -98,23 +98,28 @@ class BayesHuman(Human):
         r_goal = self.goals[:,[np.argmax(self.belief.belief)]]
 
         # if the estimated goal of the robot is the same as the human's current goal, change the goal
-        # if np.linalg.norm(r_goal - self.goal) <= 1e-3:
-        #     # choose a new goal by selecting the closest goal that isn't the same as the robot's
-        #     dists = np.linalg.norm(self.goals - r_goal, axis=0)
-        #     dists[np.argmax(self.belief.belief)] = np.inf
-        #     g_idx = np.argmin(dists)
-            
-        #     # g_idx = np.random.randint(self.goals.shape[1])
-        #     self.goal = self.goals[:,[g_idx]]
-        # TODO: remove later, this is a temporary hack
-        # chooses goal to be the one the robot is least likely heading towards
-        # if belief is uniform, choose the closest goal
         if np.isclose(self.belief.belief, 1/self.belief.belief.shape[0]).all():
             dists = np.linalg.norm(self.goals - self.x, axis=0)
             g_idx = np.argmin(dists)
-        else:
-            g_idx = np.argmin(self.belief.belief)
-        self.goal = self.goals[:,[g_idx]]
+            self.goal = self.goals[:,[g_idx]]
+        elif np.linalg.norm(r_goal - self.goal) <= 1e-3:
+            # choose a new goal by selecting the closest goal that isn't the same as the robot's
+            dists = np.linalg.norm(self.goals - r_goal, axis=0)
+            dists[np.argmax(self.belief.belief)] = np.inf
+            g_idx = np.argmin(dists)
+            
+            # g_idx = np.random.randint(self.goals.shape[1])
+            self.goal = self.goals[:,[g_idx]]
+
+        # TODO: remove later, this is a temporary hack
+        # chooses goal to be the one the robot is least likely heading towards
+        # if belief is uniform, choose the closest goal
+        # if np.isclose(self.belief.belief, 1/self.belief.belief.shape[0]).all():
+        #     dists = np.linalg.norm(self.goals - self.x, axis=0)
+        #     g_idx = np.argmin(dists)
+        # else:
+        #     g_idx = np.argmin(self.belief.belief)
+        # self.goal = self.goals[:,[g_idx]]
         
         if get_idx:
             # compute the index of the human's current goal
