@@ -219,16 +219,16 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
 
             # add data point to dataset
             # LSTM expects input of size (sequence length, # features) [batch size dealth with separately]
-            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device)) # shape (5,8)
-            robot_future.append(torch.tensor(xr_future.T).float().to(device)) # shape (5,4)
-            input_goals.append(torch.tensor(goals).float().to(device)) # shape (4,3)
-            labels.append(torch.tensor(goal_prob_label).float().to(device)) # shape (3,)
+            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
+            robot_future.append(torch.tensor(xr_future.T).float()) # shape (5,4)
+            input_goals.append(torch.tensor(goals).float()) # shape (4,3)
+            labels.append(torch.tensor(goal_prob_label).float()) # shape (3,)
 
             # add a data point that has xr_future zero'd out and uses initial goal probs as labels
-            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float().to(device)) # shape (5,8)
-            robot_future.append(torch.tensor(np.zeros_like(xr_future).T).float().to(device)) # shape (5,4)
-            input_goals.append(torch.tensor(goals).float().to(device)) # shape (4,3)
-            labels.append(torch.tensor(goal_probs).float().to(device)) # shape (3,)
+            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
+            robot_future.append(torch.tensor(np.zeros_like(xr_future).T).float()) # shape (5,4)
+            input_goals.append(torch.tensor(goals).float()) # shape (4,3)
+            labels.append(torch.tensor(goal_probs).float()) # shape (3,)
 
     return input_traj, robot_future, input_goals, labels
 
@@ -264,7 +264,7 @@ def create_dataset(n_init_cond=200):
         robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
 
         # simulate trajectories
-        data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=100)
+        data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=50)
         xh_traj.append(data[0])
         xr_traj.append(data[1])
         goals_reached.append(data[2])
@@ -308,8 +308,8 @@ def process_and_save_data(raw_data_path, processed_data_path):
         pickle.dump({"input_traj": torch.stack(input_traj), "robot_future": torch.stack(robot_future), "input_goals": torch.stack(input_goals), "labels": torch.stack(labels)}, f)
 
 if __name__ == "__main__":
-    raw_data_path = "./data/simulated_interactions_bayes_prob_train.pkl"
+    raw_data_path = "./data/simulated_interactions_bayes_prob_train_small.pkl"
     processed_data_path = "./data/simulated_interactions_bayes_prob_train_processed.pkl"
-    dataset = create_dataset(n_init_cond=1000)
-    save_data(dataset)
+    #dataset = create_dataset(n_init_cond=800)
+    #save_data(dataset, path=raw_data_path)
     process_and_save_data(raw_data_path, processed_data_path)
