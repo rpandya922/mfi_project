@@ -281,7 +281,8 @@ def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl"
         pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4]}, f)
 
 def process_and_save_data(raw_data_path, processed_data_path):
-    raw_data = pickle.load(open(raw_data_path, "rb"))
+    with open(raw_data_path, "rb") as f:
+        raw_data = pickle.load(f)
     xh_traj = raw_data["xh_traj"]
     xr_traj = raw_data["xr_traj"]
     goals_reached = raw_data["goals_reached"]
@@ -294,7 +295,7 @@ def process_and_save_data(raw_data_path, processed_data_path):
     labels = []
 
     n_traj = len(xh_traj)
-    for i in range(n_traj):
+    for i in tqdm(range(n_traj)):
         it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i])
         input_traj += it
         robot_future += rf
@@ -308,8 +309,8 @@ def process_and_save_data(raw_data_path, processed_data_path):
         pickle.dump({"input_traj": torch.stack(input_traj), "robot_future": torch.stack(robot_future), "input_goals": torch.stack(input_goals), "labels": torch.stack(labels)}, f)
 
 if __name__ == "__main__":
-    raw_data_path = "./data/simulated_interactions_bayes_prob_train_small.pkl"
-    processed_data_path = "./data/simulated_interactions_bayes_prob_train_processed.pkl"
-    #dataset = create_dataset(n_init_cond=800)
-    #save_data(dataset, path=raw_data_path)
+    raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_small.pkl"
+    processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed.pkl"
+    dataset = create_dataset(n_init_cond=10)
+    save_data(dataset, path=raw_data_path)
     process_and_save_data(raw_data_path, processed_data_path)

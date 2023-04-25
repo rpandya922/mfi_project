@@ -1,3 +1,4 @@
+import pickle
 import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
@@ -44,6 +45,32 @@ class SimTrajDataset(Dataset):
                     goals_hist = traj_goals[:,:,j-history:j].reshape((traj_goals.shape[0]*traj_goals.shape[1],history))
                     input_goals.append(torch.tensor(goals_hist.T).float().to(device)) # shape (5,12)
                     labels.append(torch.tensor(chosen_goal_idx[j,i]).to(torch.int64).to(device))
+
+        self.input_traj = input_traj
+        self.robot_future = robot_future
+        self.input_goals = input_goals
+        self.labels = labels
+
+    def __getitem__(self, index):
+        return (self.input_traj[index], self.robot_future[index], self.input_goals[index]), self.labels[index]
+
+    def __len__(self):
+        return len(self.input_traj)
+
+class ProbSimTrajDataset(Dataset):
+    def __init__(self, path : str, history : int = 5, horizon : int = 5, mode : str = "train", goal_mode : str = "static"):
+        self.mode = mode
+        self.history = history
+        self.horizon = horizon
+
+        # load pickle file containing processed data
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+
+        input_traj = data["input_traj"]
+        robot_future = data["robot_future"]
+        input_goals = data["input_goals"]
+        labels = data["labels"]
 
         self.input_traj = input_traj
         self.robot_future = robot_future

@@ -1,3 +1,6 @@
+import os
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,7 +9,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from intention_predictor import create_model, IntentionPredictor
-from dataset import SimTrajDataset
+from dataset import SimTrajDataset, ProbSimTrajDataset
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
@@ -21,9 +24,27 @@ def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
 
     iteration = 0
     for ep in tqdm(range(epoch)):
+
+        # test on validation
+        model.eval()
+        val_loss = 0
+        for batch_idx, (data, target) in enumerate(valset_loader):
+            # send data to device
+            data = [d.to(device) for d in data]
+            target = target.to(device)
+            
+            model_out = model(*data)
+
+            val_loss += loss(model_out, target).item()
+        all_val_loss.append(val_loss / (batch_idx+1) / batch_size)
+
         model.train()
         total_loss = 0
         for batch_idx, (data, target) in enumerate(trainset_loader):
+            # send data to device
+            data = [d.to(device) for d in data]
+            target = target.to(device)
+
             # forward pass
             model_out = model(*data)
 
@@ -37,15 +58,6 @@ def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
 
             iteration += 1
         all_train_loss.append(total_loss / (batch_idx+1) / batch_size)
-
-        # test on validation
-        model.eval()
-        val_loss = 0
-        for batch_idx, (data, target) in enumerate(valset_loader):
-            model_out = model(*data)
-
-            val_loss += loss(model_out, target).item()
-        all_val_loss.append(val_loss / (batch_idx+1) / batch_size)
 
     return all_train_loss, all_val_loss
 
@@ -78,7 +90,7 @@ def train_sim():
     traj_data = np.load("./data/simulated_interactions_bayes_ll2.npz")
     # traj_data = np.load("./data/simulated_interactions_rule2.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon)
-    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 
     predictor = create_model(horizon_len=horizon)
     # predictor = FC()
@@ -110,7 +122,7 @@ def train_sim_noplan():
     # validation data
     traj_data = np.load("./data/simulated_interactions_bayes2.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon)
-    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 
     predictor = create_model(horizon_len=horizon, use_plan=False)
     predictor = predictor.to(device)
@@ -139,7 +151,7 @@ def train_bis_sim():
     # TODO: use a different validation set
     traj_data = np.load("./data/BIS/simulated_interactions_test.npz")
     val_dataset = SimTrajDataset(traj_data, horizon=horizon, goal_mode="dynamic")
-    val_loader = DataLoader(dataset, batch_size=128, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 
     predictor = create_model(horizon_len=horizon, goal_mode="dynamic")
     predictor = predictor.to(device)
@@ -157,7 +169,39 @@ def train_bis_sim():
     # plt.show()
     plt.savefig("./data/train_loss.png")
 
+def train_prob_sim(save_model=True):
+    horizon = 5
+    # load datasets
+    train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train_processed.pkl"
+    dataset = ProbSimTrajDataset(path=train_path)
+    loader = DataLoader(dataset, batch_size=128, shuffle=True)
+
+    # validation data
+    val_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed.pkl"
+    val_dataset = ProbSimTrajDataset(path=val_path)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
+
+    predictor = create_model(horizon_len=horizon)
+    predictor = predictor.to(device)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=75)
+
+    if save_model:
+        # save model into new file based on date/time
+        model_name = "./data/models/prob_pred_intention_predictor_bayes_{}.pt".format(time.strftime("%Y%m%d-%H%M%S"))
+        # create directory if it doesn't exist
+        os.makedirs(os.path.dirname(model_name), exist_ok=True)
+        torch.save(predictor.state_dict(), model_name)
+
+    plt.plot(all_train_loss, label="train")
+    plt.plot(all_val_loss, label="val")
+    plt.yscale("log")
+    plt.legend()
+    # plt.show()
+    plt.savefig("./data/train_loss.png")
+
 if __name__ == "__main__":
     # train_bis_sim()
-    train_sim()
+    # train_sim()
     # train_sim_noplan()
+    train_prob_sim()
