@@ -311,6 +311,6 @@ def process_and_save_data(raw_data_path, processed_data_path):
 if __name__ == "__main__":
     raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_small.pkl"
     processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed.pkl"
-    dataset = create_dataset(n_init_cond=10)
+    dataset = create_dataset(n_init_cond=100)
     save_data(dataset, path=raw_data_path)
     process_and_save_data(raw_data_path, processed_data_path)
