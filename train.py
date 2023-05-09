@@ -179,14 +179,14 @@ def train_bis_sim():
     plt.savefig("./data/train_loss.png")
 
 def train_prob_sim(save_model=True):
-    horizon = 5
+    horizon = 20
     # load datasets
-    train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train_processed_new.pkl"
+    train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train2_processed.pkl"
     dataset = ProbSimTrajDataset(path=train_path)
     loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # validation data
-    val_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed_new.pkl"
+    val_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2_processed.pkl"
     val_dataset = ProbSimTrajDataset(path=val_path)
     val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 

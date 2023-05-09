@@ -70,7 +70,7 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             # TODO: highlight robot's predicted goal of the human
             if i > 0:
                 # get the previous robot belief
-                r_belief = all_r_beliefs[:,:,i-1][0]
+                r_belief = all_r_beliefs[:,:,i-1][1]
                 # plot a transparent circle on each of the goals with radius proportional to the robot's belief
                 for goal_idx in range(goals.shape[1]):
                     goal = goals[:,[goal_idx]]
@@ -236,11 +236,12 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
             input_goals.append(torch.tensor(goals).float()) # shape (4,3)
             labels.append(torch.tensor(goal_prob_label).float()) # shape (3,)
 
+            # TODO: decide on the proper label for these data points then add them back
             # add a data point that has xr_future zero'd out and uses initial goal probs as labels
-            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
-            robot_future.append(torch.tensor(np.zeros_like(xr_future).T).float()) # shape (5,4)
-            input_goals.append(torch.tensor(goals).float()) # shape (4,3)
-            labels.append(torch.tensor(goal_probs).float()) # shape (3,)
+            # input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
+            # robot_future.append(torch.tensor(np.zeros_like(xr_future).T).float()) # shape (5,4)
+            # input_goals.append(torch.tensor(goals).float()) # shape (4,3)
+            # labels.append(torch.tensor(goal_probs).float()) # shape (3,)
 
     return input_traj, robot_future, input_goals, labels
 
@@ -292,7 +293,7 @@ def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl"
     with open(path, "wb") as f:
         pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4]}, f)
 
-def process_and_save_data(raw_data_path, processed_data_path):
+def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20):
     with open(raw_data_path, "rb") as f:
         raw_data = pickle.load(f)
     xh_traj = raw_data["xh_traj"]
@@ -308,7 +309,7 @@ def process_and_save_data(raw_data_path, processed_data_path):
 
     n_traj = len(xh_traj)
     for i in tqdm(range(n_traj)):
-        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i])
+        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon)
         input_traj += it
         robot_future += rf
         input_goals += ig
@@ -334,7 +335,7 @@ def plot_model_pred(model_path):
     xr0[[1,3]] = 0
     goals = np.random.uniform(-10, 10, (4, 3))
     goals[[1,3]] = 0
-    r_goal = goals[:,[0]] 
+    r_goal = goals[:,[1]] 
 
     # create human and robot objects
     W = np.diag([0.0, 0.7, 0.0, 0.7])
@@ -350,14 +351,15 @@ def plot_model_pred(model_path):
     run_trajectory(human, robot, goals, model=model, plot=True)
 
 def save_dataset():
-    raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_small.pkl"
-    processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed.pkl"
-    dataset = create_dataset(n_init_cond=100)
+    raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2.pkl"
+    processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2_processed.pkl"
+    dataset = create_dataset(n_init_cond=200)
     save_data(dataset, path=raw_data_path)
-    process_and_save_data(raw_data_path, processed_data_path)
+    process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 if __name__ == "__main__":
-    np.random.seed(2)
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230425-212438.pt"
-    plot_model_pred(model_path)
-    plt.show()
+    save_dataset()
+    # np.random.seed(2)
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230425-212438.pt"
+    # plot_model_pred(model_path)
+    # plt.show()
