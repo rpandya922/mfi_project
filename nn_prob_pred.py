@@ -33,15 +33,17 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
     """
     # show both agent trajectories when the robot reasons about its effect on the human
     if plot:
+        # create figure with equal aspect ratio
         fig, ax = plt.subplots()
+        ax.set_aspect('equal')
     xh = human.x
     xr = robot.x
 
-    # if no horizon is given, run until the human reaches the goal (but set arrays to 300 and expand arrays if necessary)
+    # if no horizon is given, run until the human reaches the goal (but set arrays to 100 and expand arrays if necessary)
     if horizon is None:
         fixed_horizon = False
         horizon = np.inf
-        arr_size = 20
+        arr_size = 100
     else:
         fixed_horizon = True
         arr_size = horizon
@@ -66,6 +68,15 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             overlay_timesteps(ax, xh_traj[:,0:i], xr_traj[:,0:i], n_steps=i)
 
             # TODO: highlight robot's predicted goal of the human
+            if i > 0:
+                # get the previous robot belief
+                r_belief = all_r_beliefs[:,:,i-1][0]
+                # plot a transparent circle on each of the goals with radius proportional to the robot's belief
+                for goal_idx in range(goals.shape[1]):
+                    goal = goals[:,[goal_idx]]
+                    # plot a circle with radius proportional to the robot's belief
+                    ax.add_artist(plt.Circle((goal[0], goal[2]), r_belief[goal_idx]*2, color="green", alpha=0.3))
+
             ax.scatter(goals[0], goals[2], c="green", s=100)
             ax.scatter(human.x[0], human.x[2], c="#034483", s=100)
             ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
@@ -80,23 +91,24 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
         # but only if model is passed in
         if model is not None:
             if i < 5:
-                nominal_goal_idx = 1
+                # get zero-padded history of both agents
+                xh_hist = np.hstack((np.zeros((human.dynamics.n, 5-i)), xh_traj[:,0:i]))
+                xr_hist = np.hstack((np.zeros((robot.dynamics.n, 5-i)), xr_traj[:,0:i]))
             else:
                 xh_hist = xh_traj[:,i-5:i]
                 xr_hist = xr_traj[:,i-5:i]
-                r_beliefs = []
-                for goal_idx in range(robot.goals.shape[1]):
-                    goal = robot.goals[:,[goal_idx]]
-                    # compute robot plan given this goal
-                    xr_plan = get_robot_plan(robot, horizon=20, goal=goal)
-
-                    r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
-                # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
-                r_beliefs = np.array(r_beliefs)
-                r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
-                # TODO: set goal only if specified
-                # robot.set_goal(robot.goals[:,[r_goal_idx]])
-                all_r_beliefs[:,:,i] = r_beliefs
+            r_beliefs = []
+            for goal_idx in range(robot.goals.shape[1]):
+                goal = robot.goals[:,[goal_idx]]
+                # compute robot plan given this goal
+                xr_plan = get_robot_plan(robot, horizon=5, goal=goal)
+                r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
+            # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
+            r_beliefs = np.array(r_beliefs)
+            # TODO: set goal only if specified
+            # r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
+            # robot.set_goal(robot.goals[:,[r_goal_idx]])
+            all_r_beliefs[:,:,i] = r_beliefs
 
         # compute agent controls
         uh = human.get_u(robot.x)
@@ -308,9 +320,44 @@ def process_and_save_data(raw_data_path, processed_data_path):
     with open(processed_data_path, "wb") as f:
         pickle.dump({"input_traj": torch.stack(input_traj), "robot_future": torch.stack(robot_future), "input_goals": torch.stack(input_goals), "labels": torch.stack(labels)}, f)
 
-if __name__ == "__main__":
+def plot_model_pred(model_path):
+    # load model
+    model = create_model()
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+
+    # generate initial conditions
+    ts = 0.05
+    xh0 = np.random.uniform(-10, 10, (4, 1))
+    xh0[[1,3]] = 0
+    xr0 = np.random.uniform(-10, 10, (4, 1))
+    xr0[[1,3]] = 0
+    goals = np.random.uniform(-10, 10, (4, 3))
+    goals[[1,3]] = 0
+    r_goal = goals[:,[0]] 
+
+    # create human and robot objects
+    W = np.diag([0.0, 0.7, 0.0, 0.7])
+    h_dynamics = DIDynamics(ts=ts, W=W)
+    r_dynamics = DIDynamics(ts=ts)
+
+    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
+    human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=5)
+    # human = Human(xh0, h_dynamics, goals, gamma=5)
+    robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
+    robot.set_goals(goals)
+
+    run_trajectory(human, robot, goals, model=model, plot=True)
+
+def save_dataset():
     raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_small.pkl"
     processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val_processed.pkl"
     dataset = create_dataset(n_init_cond=100)
     save_data(dataset, path=raw_data_path)
     process_and_save_data(raw_data_path, processed_data_path)
+
+if __name__ == "__main__":
+    np.random.seed(2)
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230425-212438.pt"
+    plot_model_pred(model_path)
+    plt.show()
