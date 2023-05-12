@@ -180,6 +180,9 @@ def train_bis_sim():
 
 def train_prob_sim(save_model=True):
     horizon = 20
+    hidden_size = 256
+    num_layers = 3
+    
     # load datasets
     train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train2_processed.pkl"
     dataset = ProbSimTrajDataset(path=train_path)
@@ -190,7 +193,7 @@ def train_prob_sim(save_model=True):
     val_dataset = ProbSimTrajDataset(path=val_path)
     val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 
-    predictor = create_model(horizon_len=horizon)
+    predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     predictor = predictor.to(device)
     optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
     all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=45)

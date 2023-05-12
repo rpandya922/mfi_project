@@ -81,7 +81,7 @@ class IntentionPredictor(nn.Module):
 
         return self.classifier(c_in)
 
-def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True):
+def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True, hidden_size = 128, num_layers = 2):
     # TODO: figure out where this should be stored
     seq_len = 5
     state_dim = 4
@@ -90,21 +90,21 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
     # create RNNParameters object
     rnn_hist_params = RNNParameters(
                     feat_dim=8,
-                    num_layers=2,
-                    hidden_size=128,
+                    num_layers=num_layers,
+                    hidden_size=hidden_size,
                     droupout_fc=0.0
                     )
 
     rnn_plan_params = RNNParameters(
                     feat_dim=4,
-                    num_layers=2,
-                    hidden_size=128,
+                    num_layers=num_layers,
+                    hidden_size=hidden_size,
                     droupout_fc=0.0
                     )
 
     # create AttentionParameters object
     attn_params = AttentionParameters(
-                    embed_dim=128,
+                    embed_dim=hidden_size,
                     num_heads=1,
                     # batch_first=True
                     )
@@ -114,30 +114,30 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
         goal_hist_params = RNNParameters(
                         feat_dim=12,
                         num_layers=2,
-                        hidden_size=128,
+                        hidden_size=hidden_size,
                         droupout_fc=0.0
                         )
         fc_params = LinearParameters(
-                    in_dim=128*seq_len*2 + (128*horizon_len),
+                    in_dim=hidden_size*seq_len*2 + (hidden_size*horizon_len),
                     out_dim=3,
                     n_hidden=2,
-                    hidden_dim=128
+                    hidden_dim=hidden_size
                     )
     elif goal_mode == "static":
         goal_hist_params = None
         if use_plan:
             fc_params = LinearParameters(
-                            in_dim=(128*seq_len + (128*horizon_len) + state_dim*n_goals),
+                            in_dim=(hidden_size*seq_len + (hidden_size*horizon_len) + state_dim*n_goals),
                             out_dim=3,
-                            n_hidden=2,
-                            hidden_dim=128
+                            n_hidden=num_layers,
+                            hidden_dim=hidden_size
                             )
         else:
             fc_params = LinearParameters(
-                            in_dim=(128*seq_len + state_dim*n_goals),
+                            in_dim=(hidden_size*seq_len + state_dim*n_goals),
                             out_dim=3,
-                            n_hidden=2,
-                            hidden_dim=128
+                            n_hidden=num_layers,
+                            hidden_dim=hidden_size
                             )
 
     model = IntentionPredictor(rnn_hist_params, rnn_plan_params, attn_params, attn_params, fc_params, goal_hist_params, use_plan)
