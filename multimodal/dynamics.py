@@ -1,17 +1,17 @@
 import numpy as np
 import control
 
-def integrate_rk4(model, x0, u, t0, ts):
+def integrate_rk4(dx, x0, u, t0, ts):
     """
     x0: initial state
     u: control
     t0: initial time
     ts: sampling time
     """
-    k1 = ts * model.dx(x0, u, t0)
-    k2 = ts * model.dx(x0 + 0.5 * k1, u, t0 + 0.5 * ts)
-    k3 = ts * model.dx(x0 + 0.5 * k2, u, t0 + 0.5 * ts)
-    k4 = ts * model.dx(x0 + k3, u, t0 + ts)
+    k1 = ts * dx(x0, u, t0)
+    k2 = ts * dx(x0 + 0.5 * k1, u, t0 + 0.5 * ts)
+    k3 = ts * dx(x0 + 0.5 * k2, u, t0 + 0.5 * ts)
+    k4 = ts * dx(x0 + k3, u, t0 + ts)
 
     return x0 + ((k1 + 2*(k2 + k3) + k4) / 6.0)
 
@@ -24,6 +24,12 @@ class Unicycle():
 
         self.kv = 1.7
         self.kpsi = 1
+
+    def f(self, x):
+        return np.array([x[2] * np.cos(x[3]), x[2] * np.sin(x[3]), [0], [0]])
+    
+    def g(self, x):
+        return np.array([[0, 0], [0, 0], [1, 0], [0, 1]])
 
     def dx(self, x, u, t):
         """
@@ -51,7 +57,7 @@ class Unicycle():
         return np.array([v_dot, psi_dot])
 
     def step(self, x, u):
-        return integrate_rk4(self, x, u, 0, self.ts)
+        return integrate_rk4(self.dx, x, u, 0, self.ts)
 
 class LTI():
     def __init__(self, ts : float, W : np.ndarray = None, gamma = 1):
@@ -77,6 +83,9 @@ class LTI():
         self.K = K
         self.K2 = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
     
+    def mean_dyn(self, x, u, t):
+        return self.A @ x + self.B @ u
+
     def dx(self, x, u, t):
         return self.A @ x + self.B @ u + np.random.multivariate_normal(np.zeros(self.n), self.W, size=(1,)).T
 
@@ -105,4 +114,7 @@ class LTI():
         return uh
     
     def step(self, x, u):
-        return integrate_rk4(self, x, u, 0, self.ts)
+        return integrate_rk4(self.dx, x, u, 0, self.ts)
+
+    def step_mean(self, x, u):
+        return integrate_rk4(self.mean_dyn, x, u, 0, self.ts)

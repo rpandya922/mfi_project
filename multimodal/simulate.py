@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
 from dynamics import Unicycle, LTI
+from safety import MMSafety
 
 def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
     
@@ -89,8 +90,8 @@ def test_lti():
     x0 = np.array([[0, 0, 0, 0]]).T
 
     # randomly initialize 3 goals
-    goals = np.random.uniform(-5, 5, (2, 3))
-    # goal = np.array([[-4, 0, 3, 0]]).T
+    # goals = np.random.uniform(-5, 5, (2, 3))
+    goal = np.array([[-4, 0, 3, 0]]).T
     robot_x = np.array([[-2, 2]]).T
 
     T = 10 # in seconds
@@ -135,6 +136,67 @@ def test_lti():
     
     plt.show()
 
+def test_safety():
+    # for computing cartesian position difference
+    Ch = np.array([[1, 0, 0, 0],
+                    [0, 0, 1, 0]]) # mapping human state to [x, y]
+    Cr = np.array([[1, 0, 0, 0],
+                    [0, 1, 0, 0]]) # mapping robot state to [x, y]
+    
+    # NOTE: need W to be invertible for safety controller to work
+    W = np.diag([0.3, 0.1, 0.3, 0.1])
+    # W = np.diag([0, 0, 0, 0])
+    h_dyn = LTI(0.1, W=W)
+    r_dyn = Unicycle(0.1)
+    safe_controller = MMSafety(r_dyn, h_dyn)
+
+    # randomly initialize 3 goals
+    goals = np.random.uniform(-10, 10, (2, 3))
+    h_goal = goals[:,[0]]
+    r_goal = goals[:,1]
+
+    # initial positions
+    xh0 = np.array([[0, 0, 0, 0]]).T
+    xr0 = np.array([[-0.5, 0, 0, 0]]).T
+
+    T = 10 # in seconds
+    N = int(T / h_dyn.ts)
+
+    # initialize belief
+    belief = np.ones(goals.shape[1]) / goals.shape[1]
+    sigmas = [W.copy() for _ in range(goals.shape[1])]
+
+    fig, ax = plt.subplots()
+    xh_traj = xh0
+    xr_traj = xr0
+    # simulate for T seconds
+    for i in range(N):
+        uh = h_dyn.compute_control(xh0, Ch.T @ h_goal, Cr @ xr0)
+        ur_ref = r_dyn.compute_goal_control(xr0, r_goal)
+
+        # compute safe control
+        ur_safe = safe_controller(xr0, xh0, ur_ref, goals, belief, sigmas)
+
+        # step dynamics forward
+        xh0 = h_dyn.step(xh0, uh)
+        xr0 = r_dyn.step(xr0, ur_safe)
+
+        # save data
+        xh_traj = np.hstack((xh_traj, xh0))
+        xr_traj = np.hstack((xr_traj, xr0))
+
+        # plot
+        ax.cla()
+        overlay_timesteps(ax, xh_traj, xr_traj, n_steps=i+1)
+        ax.scatter(xh0[0], xh0[2], c="blue")
+        ax.scatter(xr0[0], xr0[1], c="red")
+        ax.scatter(goals[0], goals[1], c="green")
+        ax.set_xlim(-10, 10)
+        ax.set_ylim(-10, 10)
+        plt.pause(0.01)
+
 if __name__ == "__main__":
     # test_unicycle_goal_reach()
-    test_lti()
+    # test_lti()
+    # np.random.seed(0)
+    test_safety()
