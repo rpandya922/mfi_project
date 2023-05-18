@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.special import softmax
 
 class BayesEstimator():
     def __init__(self, thetas, dynamics, prior=None, beta=0.7):
@@ -39,7 +40,7 @@ class BayesEstimator():
         _, a_idx = self.project_action(action)
 
         # consider the next state if each potential action was chosen
-        next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        next_states = np.array([self.dynamics.step_mean(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
         rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
 
         # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
