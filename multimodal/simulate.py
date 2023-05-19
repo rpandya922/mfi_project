@@ -277,7 +277,7 @@ def visualize_uncertainty():
     beliefs = prior
     sigmas = [W.copy() for _ in range(goals.shape[1])]
 
-    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 5))
+    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 7))
     axes = np.array(axes).flatten()
     ax = axes[0]
     # make ax equal aspect ratio
@@ -290,12 +290,12 @@ def visualize_uncertainty():
     xh_traj = xh0
     xr_traj = xr0
     # simulate for T seconds
-    for i in range(N):
+    for idx in range(N):
         uh = h_dyn.compute_control(xh0, Ch.T @ h_goal, Cr @ xr0)
         ur_ref = r_dyn.compute_goal_control(xr0, r_goal)
         # ur_ref = np.zeros((2,1))
         # compute safe control
-        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True)
+        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx)
 
         # update robot's belief
         belief.update_belief(xh0, uh)
@@ -318,9 +318,9 @@ def visualize_uncertainty():
         # plot
         goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
         slack_ax.cla()
-        slack_ax.plot(3 - all_slacks[:,0], label="n std(g0)", c=goal_colors[0])
-        slack_ax.plot(3 - all_slacks[:,1], label="n std(g1)", c=goal_colors[1])
-        slack_ax.plot(3 - all_slacks[:,2], label="n std(g2)", c=goal_colors[2])
+        slack_ax.plot(3 - all_slacks[:,0], label="(k-s)-sigma (g0)", c=goal_colors[0])
+        slack_ax.plot(3 - all_slacks[:,1], label="(k-s)-sigma (g1)", c=goal_colors[1])
+        slack_ax.plot(3 - all_slacks[:,2], label="(k-s)-sigma (g2)", c=goal_colors[2])
         slack_ax.legend()
 
         dist_ax.cla()
@@ -369,11 +369,14 @@ def visualize_uncertainty():
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
         plt.pause(0.01)
+
+        # save figures for video
+        # plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
     plt.show()
 
 if __name__ == "__main__":
     # test_unicycle_goal_reach()
     # test_lti()
-    # np.random.seed(4)
+    np.random.seed(4)
     # test_safety()
     visualize_uncertainty()

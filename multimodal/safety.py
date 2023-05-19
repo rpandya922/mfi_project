@@ -28,7 +28,7 @@ class MMSafety():
         # alpha = 1
         # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
         """
         xr: robot state
         xh: human state
@@ -36,6 +36,8 @@ class MMSafety():
         thetas: goal locations
         belief: probability over goals that human will reach
         sigmas: covariance of human's goal reaching distribution (one per goal)
+        return_slacks: whether to return slack variables
+        time: time at which to compute safe control (for debugging)
         """
         # computing cartesian position difference
         Ch = np.array([[1, 0, 0, 0],
@@ -75,7 +77,7 @@ class MMSafety():
             obj = lambda x: -(x @ grad_phi_xh_flat) # so it's in the form obj(x) -> min
             const = lambda x: -(x.T @ sigma @ x) + 1 # so it's in the form const(x) >= 0
             res = minimize(obj, np.zeros(4), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
-            gammas[i] = res.fun
+            gammas[i] = -res.fun # negate objective value because we minimized -x^T grad_phi_xh, but wanted to maximize x^T grad_phi_xh
     
         # compute slack variables
         k = 3 # nominal 3-sigma bound
@@ -90,18 +92,33 @@ class MMSafety():
 
         # compute safety constraint per goal
         constraints = []
+        Ls = []
+        Ss = []
         for i in range(thetas.shape[1]):
             # computing constraint Lu <= S
             L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
             uh_i = self.h_dyn.compute_control(xh, Ch.T @ thetas[:,[i]], Cr @ xr)
-            S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, thetas[:,[i]])).item() - gammas[i]*(k - slacks[i])
-            
-            constraints.append({'type': 'ineq', 'fun': lambda u: S - (L @ u).item()})
+            S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+            Ls.append(L)
+            Ss.append(S)
+            # constraints.append({'type': 'ineq', 'fun': lambda u: S - (L @ u).item()})
+        
+        # compute constraints
+        # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
+        fun = lambda u: Ss[0] - (Ls[0] @ u).item()
+        constraints.append({'type': 'ineq', 'fun': fun})
 
-        # compute safe control
+        fun = lambda u: Ss[1] - (Ls[1] @ u).item()
+        constraints.append({'type': 'ineq', 'fun': fun})
+
+        fun = lambda u: Ss[2] - (Ls[2] @ u).item()
+        constraints.append({'type': 'ineq', 'fun': fun})
+
+        # # compute safe control
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
         res = minimize(obj, ur_ref, method="SLSQP", constraints=constraints)
-        
+        constraints_satisfied = [c['fun'](res.x) for c in constraints]
+
         # check if safe control is necessary (i.e. if safety constraint is active)
         d_dot = (d_p.T @ d_v) / d
         phi = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item()
@@ -109,7 +126,7 @@ class MMSafety():
         for i in range(thetas.shape[1]):
             phi_i = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item() + gammas[i]*(k - slacks[i])
             phi = max(phi, phi_i)
-        
+
         if phi > 0:
             # safety constraint is active
             ret = res.x[:,None], phi, True
