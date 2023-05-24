@@ -27,6 +27,8 @@ class BayesEstimator():
         for r in range(1, 2):
             actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
             all_actions.append(actions)
+        # TODO: find the right way to handle adding the 0 action
+        # all_actions.append(np.array([0, 0]).T)
         self.actions = np.vstack(all_actions)
         
         # self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
