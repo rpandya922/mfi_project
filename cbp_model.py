@@ -224,7 +224,7 @@ def plot_rollout():
     from intention_utils import overlay_timesteps
 
     # generate initial conditions
-    np.random.seed(1)
+    # np.random.seed(1)
     ts = 0.1
     xh0 = np.random.uniform(-10, 10, (4, 1))
     xh0[[1,3]] = 0
@@ -235,8 +235,8 @@ def plot_rollout():
     r_goal = goals[:,[1]] # this is arbitrary since it'll be changed in simulations later anyways
 
     # create human and robot objects
-    W = np.diag([0.0, 0.7, 0.0, 0.7])
-    # W = np.diag([0.0, 0.0, 0.0, 0.0])
+    # W = np.diag([0.0, 0.7, 0.0, 0.7])
+    W = np.diag([0.0, 0.0, 0.0, 0.0])
     h_dynamics = DIDynamics(ts=ts, W=W)
     r_dynamics = DIDynamics(ts=ts)
 
@@ -278,7 +278,8 @@ def plot_rollout():
         # simulate robot nominal belief update
         r_belief_nominal.belief = r_belief_nominal.update_belief(human.x, uh, robot.x)
         # update robot's belief with cbp
-        r_belief_prior = r_belief.update_belief(human.x, uh, robot.x)
+        # r_belief_prior = r_belief.update_belief(human.x, uh, robot.x)
+        r_belief_prior = r_belief_nominal.belief
         # r_belief_prior = np.random.uniform(0, 1, (3,)) # TODO: find out why this doesn't change the posterior belief much
         # r_belief_prior = r_belief_prior / np.sum(r_belief_prior)
         # state = human.dynamics.A @ human.x + human.dynamics.B @ uh
@@ -304,11 +305,15 @@ def plot_rollout():
             # goal_idx = np.argmax([p[0] for p in posts])
             # pick goal with highest probability on human's most likely goal
             goal_idx = np.argmax([p[np.argmax(r_belief_prior)] for p in posts])
+            # goal_idx = np.argmax([p[h_goal_idx] for p in posts])
             # goal_idx = np.argmax([p[np.argmax(r_belief_nominal.belief)] for p in posts])
+            # picks the goal that human is least likely to go towards
+            # goal_idx = np.argmin([p[np.argmin(r_belief_prior)] for p in posts])
             robot.goal = goals[:,[goal_idx]]
             # update robot's belief
             r_belief_post = posts[goal_idx]
             r_belief.belief = r_belief_post
+            # r_belief.belief = r_belief_prior
         else:
             r_belief.belief = r_belief_prior
 
