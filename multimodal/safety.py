@@ -121,11 +121,12 @@ class MMSafety():
 
         # check if safe control is necessary (i.e. if safety constraint is active)
         d_dot = (d_p.T @ d_v) / d
-        phi = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item()
+        # phi = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item()
+        phi = self.dmin**2 - d**2 - self.k_phi*d_dot.item() # without discrete-time compensation terms
         # compute safety index for each goal, where we additionally add gamma[i]*(k-slacks[i]) to phi. overall phi is the max of these
-        for i in range(thetas.shape[1]):
-            phi_i = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item() + gammas[i]*(k - slacks[i])
-            phi = max(phi, phi_i)
+        # for i in range(thetas.shape[1]):
+        #     phi_i = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item() + gammas[i]*(k - slacks[i])
+        #     phi = max(phi, phi_i)
 
         if phi > 0:
             # safety constraint is active

@@ -368,10 +368,10 @@ def visualize_uncertainty():
         ax.scatter(goals[0], goals[1], c=goal_colors)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        plt.pause(0.01)
+        # plt.pause(0.01)
 
         # save figures for video
-        # plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
+        plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
     plt.show()
 
 if __name__ == "__main__":
