@@ -140,7 +140,164 @@ class MMSafety():
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
+
+class MMLongTermSafety():
+    def __init__(self, r_dyn, h_dyn, dmin=1, eta=0.1, lambda_r=0.1, k_phi=0.5):
+        self.r_dyn = r_dyn
+        self.h_dyn = h_dyn
+        self.dmin = dmin
+        self.eta = eta
+        self.lambda_r = lambda_r
+        self.k_phi = k_phi
+
+    def slack_var_helper_(self, xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks):
+        diffs = np.zeros((thetas.shape[1], thetas.shape[1]))
+        for i in range(thetas.shape[1]):
+            for j in range(thetas.shape[1]):
+                theta_i = thetas[:,[i]]
+                uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
+                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, theta_i)).item() - gammas[i]*(k - slacks[i])
+
+                theta_j = thetas[:,[j]]
+                uh_j = self.h_dyn.compute_control(xh, Ch.T @ theta_j, Cr @ xr)
+                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, theta_j)).item() - gammas[j]*(k - slacks[j])
+                diffs[i,j] = val1 - val2
+        return np.amax(diffs)
+        # try boltzmann operator as continuous approximation of max (may be easier for optimizer)
+        # alpha = 1
+        # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
+
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
+        """
+        xr: robot state
+        xh: human state
+        ur_ref: robot reference control
+        thetas: goal locations
+        belief: probability over goals that human will reach
+        sigmas: covariance of human's goal reaching distribution (one per goal)
+        return_slacks: whether to return slack variables
+        time: time at which to compute safe control (for debugging)
+        """
+        # computing cartesian position difference
+        Ch = np.array([[1, 0, 0, 0],
+                        [0, 0, 1, 0]]) # mapping human state to [x, y]
+        Cr = np.array([[1, 0, 0, 0],
+                       [0, 1, 0, 0]]) # mapping robot state to [x, y]
+        xy_h = Ch @ xh
+        xy_r = Cr @ xr
+        d_p = xy_r - xy_h # cartesian position difference
+        d = np.linalg.norm(d_p)
+        
+        # computing cartesian velocity difference
+        Vh = np.array([[0, 1, 0, 0],
+                       [0, 0, 0, 1]]) # mapping human state to [x_dot, y_dot]
+        vxy_h = Vh @ xh
+        vxy_r = np.array([xr[2]*np.cos(xr[3]), xr[2]*np.sin(xr[3])]) # robot velocity in [x, y]
+        d_v = vxy_r - vxy_h # cartesian velocity difference
+
+        # compute grad_phi_xh 
+        grad_phi_xh = np.zeros((1,4))
+        grad_phi_xh += 2*(d_p.T @ Ch)
+        grad_phi_xh += self.k_phi*((d_v.T @ Ch)/d + (d_p.T@self.h_dyn.B.T)/d - ((d_p.T@d_v) * d_p.T @ Ch)/(d**3))
+        grad_phi_xh_flat = grad_phi_xh.flatten()
+
+        # compute grad_phi_xr
+        V = np.array([[0, 0, np.cos(xr[3]).item(), (-xr[2]*np.sin(xr[3])).item()],
+                      [0, 0, np.sin(xr[3]).item(), (xr[2]*np.cos(xr[3])).item()]]) # p_dv_p_xr
+        grad_phi_xr = np.zeros((1,4))
+        grad_phi_xr += -2*(d_p.T @ Cr)
+        grad_phi_xr += -self.k_phi*((d_v.T @ Cr)/d + (d_p.T @ V)/d - ((d_p.T@d_v) * d_p.T @ Cr)/(d**3))
+        
+        # compute gamma(x,theta) for each theta
+        gammas = np.zeros(thetas.shape[1])
+        for i in range(thetas.shape[1]):
+            sigma = sigmas[i]
+            # TODO: solve as QCQP (for speed). for now, use scipy.optimize.minimize 
+            obj = lambda x: -(x @ grad_phi_xh_flat) # so it's in the form obj(x) -> min
+            const = lambda x: -(x.T @ sigma @ x) + 1 # so it's in the form const(x) >= 0
+            res = minimize(obj, np.zeros(4), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+            gammas[i] = -res.fun # negate objective value because we minimized -x^T grad_phi_xh, but wanted to maximize x^T grad_phi_xh
     
+        # compute slack variables
+        k = 3 # nominal 3-sigma bound
+        epsilon = 0.003 # 99.7% confidence
+        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s)
+        const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
+        lb = 0
+        ub = np.inf
+        res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints={'type': 'ineq', 'fun': const})
+        # res = minimize(obj, np.zeros(thetas.shape[1]), method="trust-constr", constraints=NonlinearConstraint(const, lb, ub))
+        slacks = res.x
+
+        # computing long-term safety instead of one-step safety constraint
+        n_rollout = 100 # how many rollouts to simulate per mode
+        horizon = 5 # how many steps to simulate per rollout
+        n_robot_init = 100 # how many robot initializations to sample
+        # loop through each mode for the human
+        # compute minimum distance per mode (given (k-s)sigma bound)
+        min_dists = []
+        for i, sigma in enumerate(sigmas):
+            # compute k-sigma ellipse 
+            eigenvalues, eigenvectors = np.linalg.eig(sigma)
+            sqrt_eig = np.sqrt(eigenvalues)
+            # use only xy components
+            sqrt_eig = sqrt_eig[[0,2]]
+            eigenvectors = eigenvectors[:,[0,2]]
+            min_dists.append((k-slacks[i])*sqrt_eig[0])
+
+        # check if robot is already in safe region
+        is_safe = True
+        for i in range(thetas.shape[1]):
+            if np.linalg.norm(Cr @ xr - Ch @ xh) < min_dists[i]:
+                is_safe = False
+        if is_safe:
+            # robot is already in safe region
+            if return_slacks:
+                return ur_ref, 0, False, slacks
+            else:
+                return ur_ref, 0, False
+
+        safety_probs = [[] for _ in range(thetas.shape[1])]
+        prob_safety_satisfied = []
+        # sample robot initializations
+        xr_sims = xr + (2*np.random.rand(4, n_robot_init) - 1)
+        for init_i in range(n_robot_init):
+            xr_sim = xr_sims[:,[init_i]]
+            safety_probs_i = []
+            for i in range(thetas.shape[1]):
+                theta = thetas[:,[i]]
+                n_safe = 0
+                for rollout in range(n_rollout): 
+                    xh_sim = xh
+                    safety_violated = False
+                    for _ in range(horizon):
+                        uh = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
+                        xh_sim = self.h_dyn.step_mean(xh_sim, uh)
+                        # check if safety constraint is active (is the robot's state within (k-s)sigma bound for this mode?)
+                        if np.linalg.norm(Cr @ xr_sim - Ch @ xh_sim) < min_dists[i]:
+                            safety_violated = True
+                            break
+                    if not safety_violated:
+                        n_safe += 1
+                safety_probs[i].append(n_safe / n_rollout)
+                safety_probs_i.append(n_safe / n_rollout)
+            satisfied = belief @ np.array(safety_probs_i)
+            prob_safety_satisfied.append(satisfied)
+        # pick the robot initialization that maximizes the probability of satisfying the safety constraint
+        best_init = np.argmax(prob_safety_satisfied)
+        xr_sim = xr_sims[:,[best_init]]
+
+        # compute robot's control s.t. it drives towards xr_sim
+        ur = self.r_dyn.compute_goal_control(xr, xr_sim)
+        
+        if return_slacks:
+            return ur, 0, True, slacks
+        else:
+            return ur, 0, True
+
+    def __call__(self, *args, **kwds):
+        return self.compute_safe_control(*args, **kwds)
+
 class SEASafety():
     def __init__(self, r_dyn, h_dyn, dmin=1, eta=0.1, lambda_r=0.1, k_phi=0.5):
         self.r_dyn = r_dyn

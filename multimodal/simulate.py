@@ -4,7 +4,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Ellipse
 
 from dynamics import Unicycle, LTI
-from safety import MMSafety, SEASafety
+from safety import MMSafety, MMLongTermSafety, SEASafety 
 from bayes_inf import BayesEstimator
 
 def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
@@ -251,7 +251,8 @@ def visualize_uncertainty():
     h_dyn = LTI(0.1, W=W)
     r_dyn = Unicycle(0.1)
     dmin = 1
-    safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     phis = []
     safety_actives = []
@@ -368,10 +369,10 @@ def visualize_uncertainty():
         ax.scatter(goals[0], goals[1], c=goal_colors)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        # plt.pause(0.01)
+        plt.pause(0.01)
 
         # save figures for video
-        plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
+        # plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
     plt.show()
 
 if __name__ == "__main__":
