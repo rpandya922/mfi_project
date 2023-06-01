@@ -167,6 +167,39 @@ class MMLongTermSafety():
         # alpha = 1
         # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
 
+    def _compute_grad_phi_terms(self, xr, xh):
+        # computing cartesian position difference
+        Ch = np.array([[1, 0, 0, 0],
+                        [0, 0, 1, 0]]) # mapping human state to [x, y]
+        Cr = np.array([[1, 0, 0, 0],
+                       [0, 1, 0, 0]]) # mapping robot state to [x, y]
+        xy_h = Ch @ xh
+        xy_r = Cr @ xr
+        d_p = xy_r - xy_h # cartesian position difference
+        d = np.linalg.norm(d_p)
+        
+        # computing cartesian velocity difference
+        Vh = np.array([[0, 1, 0, 0],
+                       [0, 0, 0, 1]]) # mapping human state to [x_dot, y_dot]
+        vxy_h = Vh @ xh
+        vxy_r = np.array([xr[2]*np.cos(xr[3]), xr[2]*np.sin(xr[3])]) # robot velocity in [x, y]
+        d_v = vxy_r - vxy_h # cartesian velocity difference
+
+        # compute grad_phi_xh 
+        grad_phi_xh = np.zeros((1,4))
+        grad_phi_xh += 2*(d_p.T @ Ch)
+        grad_phi_xh += self.k_phi*((d_v.T @ Ch)/d + (d_p.T@self.h_dyn.B.T)/d - ((d_p.T@d_v) * d_p.T @ Ch)/(d**3))
+        grad_phi_xh_flat = grad_phi_xh.flatten()
+
+        # compute grad_phi_xr
+        V = np.array([[0, 0, np.cos(xr[3]).item(), (-xr[2]*np.sin(xr[3])).item()],
+                      [0, 0, np.sin(xr[3]).item(), (xr[2]*np.cos(xr[3])).item()]]) # p_dv_p_xr
+        grad_phi_xr = np.zeros((1,4))
+        grad_phi_xr += -2*(d_p.T @ Cr)
+        grad_phi_xr += -self.k_phi*((d_v.T @ Cr)/d + (d_p.T @ V)/d - ((d_p.T@d_v) * d_p.T @ Cr)/(d**3))
+
+        return grad_phi_xr, grad_phi_xh
+
     def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
         """
         xr: robot state
@@ -250,6 +283,15 @@ class MMLongTermSafety():
         for i in range(thetas.shape[1]):
             if np.linalg.norm(Cr @ xr - Ch @ xh) < min_dists[i]:
                 is_safe = False
+                break
+            # computing constraint Lu <= S
+            # L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
+            # uh_i = self.h_dyn.compute_control(xh, Ch.T @ thetas[:,[i]], Cr @ xr)
+            # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+            # if (L @ ur_ref).item() > S:
+            #     is_safe = False
+            #     break
+
         if is_safe:
             # robot is already in safe region
             if return_slacks:
@@ -260,19 +302,47 @@ class MMLongTermSafety():
         safety_probs = [[] for _ in range(thetas.shape[1])]
         prob_safety_satisfied = []
         # sample robot initializations
-        xr_sims = xr + (2*np.random.rand(4, n_robot_init) - 1)
+        # sample x,y position from meshgrid between [-10,10]
+        x = np.linspace(-10, 10, 10)
+        y = np.linspace(-10, 10, 10)
+        xx, yy = np.meshgrid(x, y)
+        xr_sims = np.vstack((xx.flatten(), yy.flatten(), xr[2]*np.zeros(xx.shape).flatten(), xr[3]*np.zeros(xx.shape).flatten()))
+
+        # xr_sims = xr + (2*np.random.rand(4, n_robot_init) - 1)
+        # # only randomize x and y position
+        # xr_sims[2,] = xr[2]
+        # xr_sims[3,] = xr[3]
         for init_i in range(n_robot_init):
             xr_sim = xr_sims[:,[init_i]]
             safety_probs_i = []
-            for i in range(thetas.shape[1]):
-                theta = thetas[:,[i]]
+            for theta_i in range(thetas.shape[1]):
+                theta = thetas[:,[theta_i]]
                 n_safe = 0
                 for rollout in range(n_rollout): 
                     xh_sim = xh
                     safety_violated = False
                     for _ in range(horizon):
-                        uh = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
-                        xh_sim = self.h_dyn.step_mean(xh_sim, uh)
+                        # need to compute goal-reaching reference control for robot at each step
+                        # ur_ref_sim = self.r_dyn.compute_goal_control(xr_sim, thetas[:,0])
+
+                        # grad_phi_xr, grad_phi_xh = self._compute_grad_phi_terms(xr_sim, xh_sim)
+                        # # compute safety constraint per goal
+                        # # computing constraint Lu <= S
+                        # L = (grad_phi_xr @ self.r_dyn.g(xr_sim)).flatten()
+                        # uh_sim = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
+                        # # TODO: probably have to re-solve for gammas and slacks here :(
+                        # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr_sim)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_sim, 0)).item() - gammas[theta_i]*(k - slacks[theta_i])
+
+                        # if (L @ ur_ref_sim).item() > S:
+                        #     safety_violated = True
+                        #     break
+
+                        # # update xr_sim and xh_sim
+                        # xh_sim = self.h_dyn.step(xh_sim, uh_sim)
+                        # xr_sim = self.r_dyn.step(xr_sim, ur_ref_sim)
+
+                        uh_sim = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
+                        xh_sim = self.h_dyn.step(xh_sim, uh_sim)
                         # check if safety constraint is active (is the robot's state within (k-s)sigma bound for this mode?)
                         if np.linalg.norm(Cr @ xr_sim - Ch @ xh_sim) < min_dists[i]:
                             safety_violated = True
@@ -283,10 +353,22 @@ class MMLongTermSafety():
                 safety_probs_i.append(n_safe / n_rollout)
             satisfied = belief @ np.array(safety_probs_i)
             prob_safety_satisfied.append(satisfied)
-        # pick the robot initialization that maximizes the probability of satisfying the safety constraint
-        best_init = np.argmax(prob_safety_satisfied)
-        xr_sim = xr_sims[:,[best_init]]
 
+        if time > 10:
+            import ipdb; ipdb.set_trace()
+        xr_next = self.r_dyn.step(xr, ur_ref)
+        # select all initializations that are safe with prob > 1-epsilon
+        prob_safety_satisfied = np.array(prob_safety_satisfied)
+        safe_init_idxs = np.where(prob_safety_satisfied > 1-epsilon)[0]
+        safe_inits = xr_sims[:,safe_init_idxs]
+        # pick the one that is closest to xr_next
+        dists = np.linalg.norm(safe_inits - xr_next, axis=0)
+        best_init = np.argmin(dists)
+        xr_sim = safe_inits[:,[best_init]]
+        # best_init = np.argmax(prob_safety_satisfied)
+        # xr_sim = xr_sims[:,[best_init]]
+
+        # NOTE: I don't think this is correct; it's possible that xr_sim itself & paths forward from there are safe but the path to xr_sim is not safe
         # compute robot's control s.t. it drives towards xr_sim
         ur = self.r_dyn.compute_goal_control(xr, xr_sim)
         

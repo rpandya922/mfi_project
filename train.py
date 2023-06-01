@@ -12,7 +12,7 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset, ProbSimTrajDataset
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
 print(f"Training with device {device}")
 
@@ -180,23 +180,23 @@ def train_bis_sim():
 
 def train_prob_sim(save_model=True):
     horizon = 20
-    hidden_size = 256
-    num_layers = 3
+    hidden_size = 128
+    num_layers = 2
     
     # load datasets
     train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train2_processed.pkl"
     dataset = ProbSimTrajDataset(path=train_path)
-    loader = DataLoader(dataset, batch_size=128, shuffle=True)
+    loader = DataLoader(dataset, batch_size=256, shuffle=True)
 
     # validation data
     val_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2_processed.pkl"
     val_dataset = ProbSimTrajDataset(path=val_path)
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     predictor = predictor.to(device)
-    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
-    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=45)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=1e-3)
+    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
 
     if save_model:
         # save model into new file based on date/time
