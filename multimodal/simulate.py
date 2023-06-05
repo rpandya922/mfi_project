@@ -267,6 +267,7 @@ def visualize_uncertainty():
     # initial positions
     xh0 = np.array([[0, 0, 0, 0]]).T
     xr0 = np.array([[-0.5, 0, 0, 0]]).T
+    # xr0 = np.array([[-5, 0, -5, 0]]).T
     distances.append(np.linalg.norm((Cr@xr0) - (Ch@xh0)))
 
     T = 10 # in seconds
@@ -296,6 +297,8 @@ def visualize_uncertainty():
         ur_ref = r_dyn.compute_goal_control(xr0, r_goal)
         # ur_ref = np.zeros((2,1))
         # compute safe control
+        if type(safe_controller) == MMLongTermSafety:
+            ur_ref = lambda xr, xh: r_dyn.compute_goal_control(xr, r_goal)
         ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx)
 
         # update robot's belief
@@ -369,10 +372,10 @@ def visualize_uncertainty():
         ax.scatter(goals[0], goals[1], c=goal_colors)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        # plt.pause(0.01)
+        plt.pause(0.01)
 
         # save figures for video
-        plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
+        # plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
     plt.show()
 
 if __name__ == "__main__":

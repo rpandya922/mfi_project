@@ -200,7 +200,7 @@ class MMLongTermSafety():
 
         return grad_phi_xr, grad_phi_xh
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
+    def compute_safe_control_old(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
         """
         xr: robot state
         xh: human state
@@ -376,6 +376,124 @@ class MMLongTermSafety():
             return ur, 0, True, slacks
         else:
             return ur, 0, True
+
+    def _slack_var_helper(self, thetas, sigma0, k, slacks, horizon, dists):
+        sigma_t = np.sqrt(np.tile(np.arange(1, horizon+1), (thetas.shape[1], 1)))
+        sigma_t = (sigma_t.T * sigma0 * (k-slacks)).T
+        is_safe = dists > sigma_t
+        # return np.sum(dists - sigma_t)
+        # return np.sum(is_safe) - (thetas.shape[1] * horizon)
+        return sigma_t
+
+    def _slack_var_obj(self, slacks):
+        all_diffs = np.zeros((slacks.shape[0], slacks.shape[0]))
+        for i in range(slacks.shape[0]):
+            for j in range(slacks.shape[0]):
+                all_diffs[i,j] = slacks[i] - slacks[j]
+        return np.amax(all_diffs)
+
+    def compute_safe_control(self, xr, xh, r_controller, thetas, belief, sigmas, return_slacks=False, time=None):
+        # hyperparameters
+        horizon = 5 # how many steps to simulate per rollout
+        k = 3 # nominal 3-sigma bound
+        epsilon = 0.003 # 99.7% confidence
+        n_rollout = 100 # how many rollouts to simulate per mode
+        n_init = 10 # how many new initial conditions to sample
+
+        Ch = np.array([[1, 0, 0, 0],
+                        [0, 0, 1, 0]]) # mapping human state to [x, y]
+        Cr = np.array([[1, 0, 0, 0],
+                       [0, 1, 0, 0]]) # mapping robot state to [x, y]
+
+        # compute minimum distance per mode (given (k-s)sigma bound)
+        one_sigma_dists = np.zeros(thetas.shape[1])
+        for i, sigma in enumerate(sigmas):
+            # compute k-sigma ellipse 
+            eigenvalues, eigenvectors = np.linalg.eig(sigma)
+            sqrt_eig = np.sqrt(eigenvalues)
+            # use only xy components
+            sqrt_eig = sqrt_eig[[0,2]]
+            eigenvectors = eigenvectors[:,[0,2]]
+            one_sigma_dists[i] = sqrt_eig[0]
+
+        # rollout the human's mean dynamics and the robot's reference control for each mode
+        all_dists = np.zeros((thetas.shape[1], horizon))
+        for theta_i in range(thetas.shape[1]):
+            theta = thetas[:,[theta_i]]
+            xh_sim = xh
+            xr_sim = xr
+            for i in range(horizon):
+                # compute controls for both agents
+                uh_sim = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
+                ur_sim = r_controller(xr_sim, xh_sim)
+
+                # update xr_sim and xh_sim
+                xh_sim = self.h_dyn.step_mean(xh_sim, uh_sim)
+                xr_sim = self.r_dyn.step(xr_sim, ur_sim)
+
+                all_dists[theta_i, i] = np.linalg.norm(Cr @ xr_sim - Ch @ xh_sim)
+
+        constraints = []
+        # constraints.append({'type': 'ineq', 'fun': lambda s: self._slack_var_helper(thetas, one_sigma_dists, k, s, horizon, all_dists)})
+        const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
+        constraints.append({'type': 'ineq', 'fun': const})
+
+        # compute slack variables
+        obj = lambda s: self._slack_var_obj(s)
+        res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
+
+        # check if we're safe with computed slack variables
+        # is_safe = self._slack_var_helper(thetas, one_sigma_dists, k, res.x, horizon, all_dists) >= 0
+        sigma_t = self._slack_var_helper(thetas, one_sigma_dists, k, res.x, horizon, all_dists)
+        is_safe = np.all(all_dists > sigma_t)
+        is_safe = is_safe and np.all(all_dists > self.dmin)
+        print(is_safe)
+
+        if is_safe:
+            if return_slacks:
+                return r_controller(xr, xh), 0, res.success, res.x
+            else:
+                return r_controller(xr, xh), 0, res.success
+        
+        # sample robot controls
+        ur_init = (np.random.rand(2, n_init) * 100) - 50
+        longterm_safety_probs = np.zeros(n_init)
+        # TODO: sample robot states directly
+
+        # loop through initializations and empirically compute safety probability
+        for i_init in range(n_init):
+            ur_i = ur_init[:,[i_init]]
+            xr_sim_init = xr
+            if i_init != 0: # so we can compute long-term safety prob from initial state as comparison
+                xr_sim_init = self.r_dyn.step(xr_sim, ur_i)
+            safety_probs = []
+            for theta_i in range(thetas.shape[1]):
+                theta = thetas[:,[theta_i]]
+                n_safe = 0
+                for _ in range(n_rollout):
+                    xr_sim = xr_sim_init
+                    xh_sim = xh
+                    safety_violated = False
+                    for i in range(horizon):
+                        # compute controls for both agents
+                        uh_sim = self.h_dyn.compute_control(xh_sim, Ch.T @ theta, Cr @ xr_sim)
+                        ur_sim = r_controller(xr_sim, xh_sim)
+
+                        # update xr_sim and xh_sim
+                        xh_sim = self.h_dyn.step(xh_sim, uh_sim)
+                        xr_sim = self.r_dyn.step(xr_sim, ur_sim)
+
+                        # check if safety constraint is active (is the robot's state within sqrt(t)*(k-s)sigma bound for this mode?)
+                        if np.linalg.norm(Cr @ xr_sim - Ch @ xh_sim) < sigma_t[theta_i, i]:
+                            if i_init > 0:
+                                import ipdb; ipdb.set_trace()
+                            safety_violated = True
+                            break
+                    if not safety_violated:
+                        n_safe += 1
+                safety_probs.append(n_safe / n_rollout)
+            longterm_safety_probs[i_init] = belief @ np.array(safety_probs)
+        import ipdb; ipdb.set_trace()
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
