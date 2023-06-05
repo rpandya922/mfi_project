@@ -12,7 +12,7 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset, ProbSimTrajDataset
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
 print(f"Training with device {device}")
 
@@ -195,7 +195,7 @@ def train_prob_sim(save_model=True):
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     predictor = predictor.to(device)
-    optimizer = torch.optim.Adam(predictor.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=1e-3, weight_decay=1e-2)
     all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
 
     if save_model:

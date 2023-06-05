@@ -15,7 +15,7 @@ from intention_utils import overlay_timesteps, get_robot_plan, process_model_inp
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, robot_obs=None):
+def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, robot_obs=None, k_hist=5, k_plan=20):
     """
     inputs:
         human: Human object
@@ -34,8 +34,17 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
     # show both agent trajectories when the robot reasons about its effect on the human
     if plot:
         # create figure with equal aspect ratio
-        fig, ax = plt.subplots()
-        ax.set_aspect('equal')
+        # fig, ax = plt.subplots()
+        # ax.set_aspect('equal')
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
+        axes = np.array(axes).flatten()
+        ax = axes[0]
+        # make ax equal aspect ratio
+        ax.set_aspect('equal', adjustable='box')
+        h_belief_ax = axes[1]
+        r_belief_ax = axes[2]
+        goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
+        h_goal_ax = axes[3]
     xh = human.x
     xr = robot.x
 
@@ -53,11 +62,17 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
         all_r_beliefs = np.zeros((goals.shape[1], goals.shape[1], arr_size))
     else:
         all_r_beliefs = None
+    if type(human) == BayesHuman:
+        all_h_beliefs = np.zeros((goals.shape[1], arr_size))
+    else:
+        all_h_beliefs = None
     xh_traj = np.zeros((human.dynamics.n, arr_size+1))
     xr_traj = np.zeros((robot.dynamics.n, arr_size+1))
     xh_traj[:,[0]] = xh
     xr_traj[:,[0]] = xr
     h_goal_reached = -1
+
+    r_goal_idx = np.argmin(np.linalg.norm(goals[[0,2]] - robot.goal[[0,2]], axis=0))
 
     i = 0
     while i < horizon:
@@ -70,14 +85,14 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             # TODO: highlight robot's predicted goal of the human
             if i > 0:
                 # get the previous robot belief
-                r_belief = all_r_beliefs[:,:,i-1][1]
+                r_belief = all_r_beliefs[:,:,i-1][r_goal_idx]
                 # plot a transparent circle on each of the goals with radius proportional to the robot's belief
                 for goal_idx in range(goals.shape[1]):
                     goal = goals[:,[goal_idx]]
                     # plot a circle with radius proportional to the robot's belief
-                    ax.add_artist(plt.Circle((goal[0], goal[2]), r_belief[goal_idx]*2, color="green", alpha=0.3))
+                    ax.add_artist(plt.Circle((goal[0], goal[2]), r_belief[goal_idx]*2, color=goal_colors[goal_idx], alpha=0.3))
 
-            ax.scatter(goals[0], goals[2], c="green", s=100)
+            ax.scatter(goals[0], goals[2], c=goal_colors, s=100)
             ax.scatter(human.x[0], human.x[2], c="#034483", s=100)
             ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
             ax.set_xlim(-10, 10)
@@ -85,24 +100,47 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             # img_path = f"./data/videos/mfi_demo/frames3"
             # img_path += f"/{i:03d}.png"
             # plt.savefig(img_path, dpi=300)
+
+            h_belief_ax.clear()
+            h_belief_ax.plot(all_h_beliefs[0,:i], label="P(g0)", c=goal_colors[0])
+            h_belief_ax.plot(all_h_beliefs[1,:i], label="P(g1)", c=goal_colors[1])
+            h_belief_ax.plot(all_h_beliefs[2,:i], label="P(g2)", c=goal_colors[2])
+            h_belief_ax.set_xlabel("h belief of r")
+            h_belief_ax.legend()
+
+            r_belief = all_r_beliefs[r_goal_idx,:,:i]
+            r_belief_ax.clear()
+            r_belief_ax.plot(r_belief[0], label="P(g0)", c=goal_colors[0])
+            r_belief_ax.plot(r_belief[1], label="P(g1)", c=goal_colors[1])
+            r_belief_ax.plot(r_belief[2], label="P(g2)", c=goal_colors[2])
+
+            # plot other goal idx beliefs in dotted lines
+            r_belief0 = all_r_beliefs[2,:,:i]
+            r_belief_ax.plot(r_belief0[0], label="P(g0)", c=goal_colors[0], linestyle="--")
+            r_belief_ax.plot(r_belief0[1], label="P(g1)", c=goal_colors[1], linestyle="--")
+            r_belief_ax.plot(r_belief0[2], label="P(g2)", c=goal_colors[2], linestyle="--")
+            r_belief_ax.set_xlabel("r belief of h")
+            r_belief_ax.legend()
+
             plt.pause(0.01)
 
         # compute the robot's prediction of the human's intention
         # but only if model is passed in
         if model is not None:
-            if i < 5:
+            if i < k_hist:
                 # get zero-padded history of both agents
-                xh_hist = np.hstack((np.zeros((human.dynamics.n, 5-i)), xh_traj[:,0:i]))
-                xr_hist = np.hstack((np.zeros((robot.dynamics.n, 5-i)), xr_traj[:,0:i]))
+                xh_hist = np.hstack((np.zeros((human.dynamics.n, k_hist-i)), xh_traj[:,0:i]))
+                xr_hist = np.hstack((np.zeros((robot.dynamics.n, k_hist-i)), xr_traj[:,0:i]))
             else:
-                xh_hist = xh_traj[:,i-5:i]
-                xr_hist = xr_traj[:,i-5:i]
+                xh_hist = xh_traj[:,i-k_hist:i]
+                xr_hist = xr_traj[:,i-k_hist:i]
             r_beliefs = []
             for goal_idx in range(robot.goals.shape[1]):
                 goal = robot.goals[:,[goal_idx]]
                 # compute robot plan given this goal
-                xr_plan = get_robot_plan(robot, horizon=5, goal=goal)
+                xr_plan = get_robot_plan(robot, horizon=k_plan, goal=goal)
                 r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
+            # import ipdb; ipdb.set_trace()
             # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
             r_beliefs = np.array(r_beliefs)
             # TODO: set goal only if specified
@@ -120,7 +158,7 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             ur = np.zeros(ur.shape)
 
         # update human belief (if applicable)
-        if type(human) == BayesHuman and i >=5:
+        if type(human) == BayesHuman and i >= 5:
             human.update_belief(robot.x, ur)
 
         # compute new states
@@ -128,6 +166,8 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
         xr = robot.step(ur)
 
         # save data
+        if all_h_beliefs is not None:
+            all_h_beliefs[:,i] = human.belief.belief
         xh_traj[:,[i+1]] = xh
         xr_traj[:,[i+1]] = xr
 
@@ -138,6 +178,8 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
                 arr_size *= 2
                 xh_traj = np.hstack((xh_traj, np.zeros((human.dynamics.n, arr_size))))
                 xr_traj = np.hstack((xr_traj, np.zeros((robot.dynamics.n, arr_size))))
+                if all_h_beliefs is not None:
+                    all_h_beliefs = np.hstack((all_h_beliefs, np.zeros((goals.shape[1], arr_size))))
                 if all_r_beliefs is not None:
                     all_r_beliefs = np.dstack((all_r_beliefs, np.zeros((goals.shape[1], goals.shape[1], arr_size))))
                 # print("expanding arrays")
@@ -323,7 +365,10 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
 
 def plot_model_pred(model_path):
     # load model
-    model = create_model()
+    horizon = 20
+    hidden_size = 128
+    num_layers = 2
+    model = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
@@ -358,8 +403,9 @@ def save_dataset():
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 if __name__ == "__main__":
-    save_dataset()
+    # save_dataset()
     # np.random.seed(2)
-    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230425-212438.pt"
-    # plot_model_pred(model_path)
-    # plt.show()
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230602-210158.pt"
+    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    plot_model_pred(model_path)
+    plt.show()
