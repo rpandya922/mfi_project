@@ -447,25 +447,30 @@ class MMLongTermSafety():
         sigma_t = self._slack_var_helper(thetas, one_sigma_dists, k, res.x, horizon, all_dists)
         is_safe = np.all(all_dists > sigma_t)
         is_safe = is_safe and np.all(all_dists > self.dmin)
-        print(is_safe)
+        # print(is_safe)
 
         if is_safe:
             if return_slacks:
-                return r_controller(xr, xh), 0, res.success, res.x
+                return r_controller(xr, xh), 0, False, res.x
             else:
-                return r_controller(xr, xh), 0, res.success
+                return r_controller(xr, xh), 0, False
         
         # sample robot controls
-        ur_init = (np.random.rand(2, n_init) * 100) - 50
-        longterm_safety_probs = np.zeros(n_init)
-        # TODO: sample robot states directly
+        # ur_init = (np.random.rand(2, n_init) * 100) - 50
+        # longterm_safety_probs = np.zeros(n_init)
+        # sample robot states directly
+        xr_init = xr + (10*np.random.rand(4, n_init) - 5)
+        xr_init[2,] = 0
+        xr_init[3,] = 0
+        xr_init[:,[0]] = xr
 
         # loop through initializations and empirically compute safety probability
         for i_init in range(n_init):
-            ur_i = ur_init[:,[i_init]]
-            xr_sim_init = xr
-            if i_init != 0: # so we can compute long-term safety prob from initial state as comparison
-                xr_sim_init = self.r_dyn.step(xr_sim, ur_i)
+            # ur_i = ur_init[:,[i_init]]
+            # xr_sim_init = xr
+            # if i_init != 0: # so we can compute long-term safety prob from initial state as comparison
+            #     xr_sim_init = self.r_dyn.step(xr_sim, ur_i)
+            xr_sim_init = xr_init[:,[i_init]]
             safety_probs = []
             for theta_i in range(thetas.shape[1]):
                 theta = thetas[:,[theta_i]]
@@ -485,15 +490,33 @@ class MMLongTermSafety():
 
                         # check if safety constraint is active (is the robot's state within sqrt(t)*(k-s)sigma bound for this mode?)
                         if np.linalg.norm(Cr @ xr_sim - Ch @ xh_sim) < sigma_t[theta_i, i]:
-                            if i_init > 0:
-                                import ipdb; ipdb.set_trace()
                             safety_violated = True
                             break
                     if not safety_violated:
                         n_safe += 1
                 safety_probs.append(n_safe / n_rollout)
             longterm_safety_probs[i_init] = belief @ np.array(safety_probs)
-        import ipdb; ipdb.set_trace()
+        curr_safety_prob = longterm_safety_probs[0]
+        # find direction of improvement that's closest to current xr
+        improve_idxs = np.where(longterm_safety_probs > curr_safety_prob)[0]
+        if len(improve_idxs) == 0:
+            # no improvement possible
+            # best_idx = np.argmax(longterm_safety_probs)
+            import ipdb; ipdb.set_trace()
+        else:
+            # pick the one that is closest to xr
+            dists = np.linalg.norm(xr_init[:,improve_idxs] - xr, axis=0)
+            best_idx = improve_idxs[np.argmin(dists)]
+            xr_goal = xr_init[:,[best_idx]]
+            # compute robot's control s.t. it drives towards xr_goal (inversely proportional to improvement in safety prob)
+            ur = self.r_dyn.compute_goal_control(xr, xr_goal)
+            # ur = ur / (longterm_safety_probs[best_idx] - curr_safety_prob)
+            
+            ret = ur, 0, True
+            if return_slacks:
+                ret += (res.x,)
+            return ret
+        
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
