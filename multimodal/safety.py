@@ -457,7 +457,7 @@ class MMLongTermSafety():
         
         # sample robot controls
         # ur_init = (np.random.rand(2, n_init) * 100) - 50
-        # longterm_safety_probs = np.zeros(n_init)
+        longterm_safety_probs = np.zeros(n_init)
         # sample robot states directly
         xr_init = xr + (10*np.random.rand(4, n_init) - 5)
         xr_init[2,] = 0
