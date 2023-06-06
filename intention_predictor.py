@@ -14,7 +14,8 @@ class IntentionPredictor(nn.Module):
             hparams_attn_plan : AttentionParameters,
             hparams_linear : LinearParameters,
             hparams_goal_hist : RNNParameters = None,
-            use_plan : bool = True
+            use_plan : bool = True,
+            hparams_rnn_pred : RNNParameters = None
         ):
         super(IntentionPredictor, self).__init__()
 
@@ -34,6 +35,11 @@ class IntentionPredictor(nn.Module):
         else:
             self.goal_hist = False
         self.use_plan = use_plan
+        if hparams_rnn_pred is not None:
+            self.pred_decoder = self._create_encoder(hparams_rnn_pred)
+            self.use_h_pred = True
+        else:
+            self.use_h_pred = False
 
         if self.goal_hist and not self.use_plan:
             raise NotImplementedError("Dynamic goals with no robot plan not implemented")
@@ -81,7 +87,7 @@ class IntentionPredictor(nn.Module):
 
         return self.classifier(c_in)
 
-def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True, hidden_size = 128, num_layers = 2):
+def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True, hidden_size = 128, num_layers = 2, use_h_pred = False):
     # TODO: figure out where this should be stored
     seq_len = 5
     state_dim = 4
@@ -139,7 +145,9 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
                             n_hidden=num_layers,
                             hidden_dim=hidden_size
                             )
+    
+    h_pred_params = None # not implemented yet
 
-    model = IntentionPredictor(rnn_hist_params, rnn_plan_params, attn_params, attn_params, fc_params, goal_hist_params, use_plan)
+    model = IntentionPredictor(rnn_hist_params, rnn_plan_params, attn_params, attn_params, fc_params, goal_hist_params, use_plan, h_pred_params)
 
     return model

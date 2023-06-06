@@ -234,6 +234,112 @@ def simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=10):
     # return the probability of each goal being the human's intention
     return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / n_traj, goals
 
+def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branching_times=[10, 50, 100]):
+    """
+    Runs a number of simulations from the same initial conditions and returns the probability of each goal being the human's intention
+    """
+    # save data
+    all_xh_traj = []
+    all_xr_traj = []
+    all_goals_reached = []
+    goals_reached = np.zeros(goals.shape[1])
+    # keep track of initial conditions for branching points
+    init_conds = [(xh0, xr0, False) for _ in range(n_traj)] # start from the first initial contition n_traj times
+    # for i in range(n_traj):
+    while len(init_conds) > 0:
+        # set the human and robot's initial states
+        xh, xr, is_branch = init_conds.pop(0)
+        human.x = xh
+        robot.x = xr
+        # randomly set the robot's goal to one of the options
+        robot.set_goal(goals[:,[np.random.randint(0, goals.shape[1])]])
+        # generate a synthetic obstacle for the robot that lies between the robotand its goal
+        # get bounds of the rectangle that contains the robot and its goal
+        x_min = min(robot.x[0], robot.goal[0])
+        x_max = max(robot.x[0], robot.goal[0])
+        y_min = min(robot.x[2], robot.goal[2])
+        y_max = max(robot.x[2], robot.goal[2])
+        # randomly sample a point in this rectangle
+        x = np.random.uniform(x_min, x_max)
+        y = np.random.uniform(y_min, y_max)
+        robot_obs = np.array([[x[0], 0, y[0], 0]]).T
+        # run the simulation
+        # xh_traj, xr_traj, _, h_goal_reached = run_trajectory(human, robot, goals, plot=False, robot_obs=robot_obs)
+
+        # if no horizon is given, run until the human reaches the goal (but set arrays to 100 and expand arrays if necessary)
+        fixed_horizon = False
+        horizon = np.inf
+        arr_size = 100
+
+        xh_traj = np.zeros((human.dynamics.n, arr_size+1))
+        xr_traj = np.zeros((robot.dynamics.n, arr_size+1))
+        xh_traj[:,[0]] = xh0
+        xr_traj[:,[0]] = xr0
+        h_goal_reached = -1
+
+        r_goal_idx = np.argmin(np.linalg.norm(goals[[0,2]] - robot.goal[[0,2]], axis=0))
+
+        i = 0
+        while i < horizon:
+             # compute agent controls
+            uh = human.get_u(robot.x)
+            ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+            if robot_obs is not None:
+                ur += robot.dynamics.get_robot_control(robot.x, robot_obs)
+            # robot should stay still for 5 timesteps
+            if i < 5:
+                ur = np.zeros(ur.shape)
+
+            # update human belief (if applicable)
+            if type(human) == BayesHuman and i >= 5:
+                human.update_belief(robot.x, ur)
+
+            # compute new states
+            xh = human.step(uh)
+            xr = robot.step(ur)
+
+            # save new initial conditions if we're at a branching point
+            if i in branching_times and not is_branch:
+                init_conds = init_conds + [((xh, xr, True)) for _ in range(n_traj)]
+
+            # save data
+            if all_h_beliefs is not None:
+                all_h_beliefs[:,i] = human.belief.belief
+            xh_traj[:,[i+1]] = xh
+            xr_traj[:,[i+1]] = xr
+
+            # check if human has reached a goal
+            if not fixed_horizon:
+                # check if we need to expand arrays
+                if i >= arr_size-1:
+                    arr_size *= 2
+                    xh_traj = np.hstack((xh_traj, np.zeros((human.dynamics.n, arr_size))))
+                    xr_traj = np.hstack((xr_traj, np.zeros((robot.dynamics.n, arr_size))))
+                    if all_h_beliefs is not None:
+                        all_h_beliefs = np.hstack((all_h_beliefs, np.zeros((goals.shape[1], arr_size))))
+                    if all_r_beliefs is not None:
+                        all_r_beliefs = np.dstack((all_r_beliefs, np.zeros((goals.shape[1], goals.shape[1], arr_size))))
+                    # print("expanding arrays")
+                dists = np.linalg.norm(goals[[0,2]] - xh[[0,2]], axis=0)
+                if np.min(dists) < 0.5:
+                    h_goal_reached = np.argmin(dists)
+                    break
+            
+            # NOTE: don't put any code in the loop after this
+            i += 1
+        # TODO: decide if it matters that the trajectory starts from branching point (i.e. should we prepend the "parent trajectory"?)
+        xh_traj = xh_traj[:,0:i+1]
+        xr_traj = xr_traj[:,0:i+1]
+
+        # increment the count for the goal that was reached
+        goals_reached[h_goal_reached] += 1
+        # save data
+        all_xh_traj.append(xh_traj)
+        all_xr_traj.append(xr_traj)
+        all_goals_reached.append(h_goal_reached)
+    # return the probability of each goal being the human's intention
+    return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / n_traj, goals
+
 def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5):
 
     input_traj = []
