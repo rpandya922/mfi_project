@@ -184,12 +184,12 @@ def train_prob_sim(save_model=True):
     num_layers = 2
     
     # load datasets
-    train_path = "./data/prob_pred/simulated_interactions_bayes_prob_train2_processed.pkl"
+    train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
     dataset = ProbSimTrajDataset(path=train_path)
     loader = DataLoader(dataset, batch_size=256, shuffle=True)
 
     # validation data
-    val_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2_processed.pkl"
+    val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
     val_dataset = ProbSimTrajDataset(path=val_path)
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
 
