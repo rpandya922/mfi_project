@@ -209,6 +209,7 @@ def simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=10):
     goals_reached = np.zeros(goals.shape[1])
     for i in range(n_traj):
         # set the human and robot's initial states
+        # TODO: deal with human's belief
         human.x = xh0
         robot.x = xr0
         # randomly set the robot's goal to one of the options
@@ -244,12 +245,13 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     all_goals_reached = []
     goals_reached = np.zeros(goals.shape[1])
     # keep track of initial conditions for branching points
-    init_conds = [(xh0, xr0, False) for _ in range(n_traj)] # start from the first initial contition n_traj times
-    # for i in range(n_traj):
+    init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1]) for _ in range(n_traj)] # start from the first initial contition n_traj times
+
     while len(init_conds) > 0:
         # set the human and robot's initial states
-        xh, xr, is_branch = init_conds.pop(0)
+        xh, xr, is_branch, h_belief = init_conds.pop(0)
         human.x = xh
+        human.belief.belief = h_belief
         robot.x = xr
         # randomly set the robot's goal to one of the options
         robot.set_goal(goals[:,[np.random.randint(0, goals.shape[1])]])
@@ -300,11 +302,9 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
 
             # save new initial conditions if we're at a branching point
             if i in branching_times and not is_branch:
-                init_conds = init_conds + [((xh, xr, True)) for _ in range(n_traj)]
+                init_conds = init_conds + [((xh, xr, True, human.belief.belief.copy())) for _ in range(n_traj)]
 
             # save data
-            if all_h_beliefs is not None:
-                all_h_beliefs[:,i] = human.belief.belief
             xh_traj[:,[i+1]] = xh
             xr_traj[:,[i+1]] = xr
 
@@ -315,10 +315,6 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
                     arr_size *= 2
                     xh_traj = np.hstack((xh_traj, np.zeros((human.dynamics.n, arr_size))))
                     xr_traj = np.hstack((xr_traj, np.zeros((robot.dynamics.n, arr_size))))
-                    if all_h_beliefs is not None:
-                        all_h_beliefs = np.hstack((all_h_beliefs, np.zeros((goals.shape[1], arr_size))))
-                    if all_r_beliefs is not None:
-                        all_r_beliefs = np.dstack((all_r_beliefs, np.zeros((goals.shape[1], goals.shape[1], arr_size))))
                     # print("expanding arrays")
                 dists = np.linalg.norm(goals[[0,2]] - xh[[0,2]], axis=0)
                 if np.min(dists) < 0.5:
@@ -327,7 +323,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
             
             # NOTE: don't put any code in the loop after this
             i += 1
-        # TODO: decide if it matters that the trajectory starts from branching point (i.e. should we prepend the "parent trajectory"?)
+        # the trajectory may start from branching point, I have decided not to prepend the "parent trajectory" because that just duplicates some data
         xh_traj = xh_traj[:,0:i+1]
         xr_traj = xr_traj[:,0:i+1]
 
@@ -338,7 +334,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
         all_xr_traj.append(xr_traj)
         all_goals_reached.append(h_goal_reached)
     # return the probability of each goal being the human's intention
-    return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / n_traj, goals
+    return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals
 
 def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5):
 
@@ -378,7 +374,7 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
                 xr_future = xr_traj[:,j+1:(j+1)+horizon]
 
             # add data point to dataset
-            # LSTM expects input of size (sequence length, # features) [batch size dealth with separately]
+            # LSTM expects input of size (sequence length, # features) [batch size dealt with separately]
             input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
             robot_future.append(torch.tensor(xr_future.T).float()) # shape (5,4)
             input_goals.append(torch.tensor(goals).float()) # shape (4,3)
@@ -393,7 +389,7 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
 
     return input_traj, robot_future, input_goals, labels
 
-def create_dataset(n_init_cond=200):
+def create_dataset(n_init_cond=200, branching=True):
     # generate n_init_cond initial conditions and find goal_probs for each
 
     # saving raw data
@@ -425,7 +421,10 @@ def create_dataset(n_init_cond=200):
         robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
 
         # simulate trajectories
-        data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=50)
+        if not branching:
+            data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=50)
+        else:
+            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branching_times=[10, 20, 50])
         xh_traj.append(data[0])
         xr_traj.append(data[1])
         goals_reached.append(data[2])
@@ -502,16 +501,18 @@ def plot_model_pred(model_path):
     run_trajectory(human, robot, goals, model=model, plot=True)
 
 def save_dataset():
-    raw_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2.pkl"
-    processed_data_path = "./data/prob_pred/simulated_interactions_bayes_prob_val2_processed.pkl"
-    dataset = create_dataset(n_init_cond=200)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
+    dataset = create_dataset(n_init_cond=200, branching=True)
     save_data(dataset, path=raw_data_path)
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 if __name__ == "__main__":
-    # save_dataset()
-    # np.random.seed(2)
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230602-210158.pt"
-    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    plot_model_pred(model_path)
-    plt.show()
+    # # save_dataset()
+    # # np.random.seed(2)
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230602-210158.pt"
+    # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    # plot_model_pred(model_path)
+    # plt.show()
+
+    save_dataset()
