@@ -107,7 +107,93 @@ class CBPEstimator():
 
     def copy(self):
         return CBPEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
+
+class BetaBayesEstimator():
+    def __init__(self, thetas, betas, dynamics, prior=None):
+        self.thetas = thetas # column vectors
+        self.betas = np.array(betas)
+        self.dynamics = dynamics
+
+        n_theta = thetas.shape[1]
+        n_beta = len(betas)
+        if prior is None:
+            prior = np.ones((n_theta, n_beta)) / (n_theta*n_beta)
+        else:
+            assert prior.shape == (n_theta,n_beta)
+        self.belief = prior
+
+        # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
+        n_actions = 16
+        angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
+        all_actions = []
+        for r in range(1, 3):
+            actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
+            all_actions.append(actions)
+        all_actions.append(np.array([0, 0]).T)
+        self.actions = np.vstack(all_actions)
+
+        # self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
+
+    def project_action(self, action):
+        # passed-in action will be a column vector
+        a = action.flatten()
+        # find closest action
+        dists = np.linalg.norm(self.actions - a, axis=1)
+        a_idx = np.argmin(dists)
+
+        return self.actions[a_idx], a_idx
     
+    def update_belief_(self, state, action, r_state):
+        # project chosen action to discrete set
+        _, a_idx = self.project_action(action)
+
+        # robot should only have access to mean/non-noisy dynamics and also include term in control for robot's state
+        # consider the next state if each potential action was chosen
+        step = lambda u: self.dynamics.A @ state + self.dynamics.B @ (u + self.dynamics.gamma/np.linalg.norm(state - r_state)**2*self.dynamics.get_robot_control(state, r_state))
+        next_states = np.array([step(a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
+
+        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
+        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
+
+        Q_vals = rs - opt_rewards
+        Q_vals = np.tile(Q_vals[:,:,None], (1,1,self.betas.shape[0])) # mofiying so we can do computation with all betas
+
+        # compute probability of choosing each action (flatten for softmax)
+        prob_action = softmax((Q_vals * self.betas).reshape(self.actions.shape[0], self.belief.shape[0]*self.belief.shape[1]), axis=0)
+        # get row corresponding to chosen action (unflatten for belief update)
+        y_i = prob_action[a_idx]
+        y_i = y_i.reshape(self.belief.shape[0],self.belief.shape[1])
+
+        # update belief
+        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
+
+        # self.belief = new_belief
+
+        return new_belief
+    
+    def update_belief(self, state, action, r_state):
+        # project chosen action to discrete set
+        _, a_idx = self.project_action(action)
+        
+        # testing full bayesian belief update "manually" i.e. without vectorizing, for debugging
+        new_belief = np.zeros(self.belief.shape)
+        for theta_idx in range(self.thetas.shape[1]):
+            for beta_idx in range(self.betas.shape[0]):
+                theta = self.thetas[:,[theta_idx]]
+                beta = self.betas[beta_idx]
+                # robot should only have access to mean/non-noisy dynamics and also include term in control for robot's state
+                # consider the next state if each potential action was chosen
+                step = lambda u: self.dynamics.A @ state + self.dynamics.B @ (u + self.dynamics.gamma/np.linalg.norm(state - r_state)**2*self.dynamics.get_robot_control(state, r_state))
+                next_states = np.array([step(a[:,None]) for a in self.actions])
+                
+                rewards = -np.linalg.norm((next_states - theta), axis=1)
+                p_a_given_theta_beta = softmax(beta * rewards)[a_idx][0]
+                new_belief[theta_idx, beta_idx] = p_a_given_theta_beta * self.belief[theta_idx, beta_idx]
+        
+        return new_belief / np.sum(new_belief)
+
+
 def test_fixed_goal(xh0, xr0, goals, r_goal, h_dynamics, r_dynamics):
     h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.7)
     human = BayesHuman(xh0, h_dynamics, goals, h_belief, gamma=5)
@@ -224,7 +310,7 @@ def plot_rollout():
     from intention_utils import overlay_timesteps
 
     # generate initial conditions
-    # np.random.seed(1)
+    np.random.seed(0)
     ts = 0.1
     xh0 = np.random.uniform(-10, 10, (4, 1))
     xh0[[1,3]] = 0
@@ -245,6 +331,7 @@ def plot_rollout():
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
     r_belief = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=1)
     r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=1)
+    r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[0.01, 0.1, 1, 10, 100, 1000], dynamics=h_dynamics)
 
     # simulate trajectory
     xh_traj = xh0
@@ -254,11 +341,12 @@ def plot_rollout():
     h_beliefs = h_belief.belief
     r_beliefs = r_belief.belief
     r_beliefs_nominal = r_belief_nominal.belief
+    r_beliefs_beta = r_belief_beta.belief
     h_goal_idxs = []
     r_goal_idxs = []
 
     # figure for plotting
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
+    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 7))
     axes = np.array(axes).flatten()
     ax = axes[0]
     # make ax equal aspect ratio
@@ -267,10 +355,13 @@ def plot_rollout():
     r_belief_ax = axes[2]
     goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
     h_goal_ax = axes[3]
+    r_beta_ax = axes[4]
 
     for idx in range(N):
+        # human.goal = np.array([[-10, 0, 10, 0]]).T
         # compute agent controls
         uh = human.get_u(robot.x)
+        # uh = np.zeros((2,1)) #+ np.random.uniform(-5, 5, (2,1))
         ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
 
         # update human's belief
@@ -285,6 +376,14 @@ def plot_rollout():
         # state = human.dynamics.A @ human.x + human.dynamics.B @ uh
         # r_belief_post = r_belief.weight_by_score(r_belief_prior, r_goal, state, beta=0.1)
         # r_belief.belief = r_belief_post
+        
+        # update the robot's belief over goals and betas
+        # r_belief_beta1 = r_belief_beta.update_belief(human.x, uh, robot.x)
+        r_belief_beta2 = r_belief_beta.update_belief_(human.x, uh, robot.x)
+        # print(np.allclose(r_belief_beta1, r_belief_beta2))
+        # print(np.sum(r_belief_beta1 - r_belief_beta2))
+        r_belief_beta.belief = r_belief_beta2
+        # TODO: print out the p_u_given_theta for actual action and each theta
 
         if idx > 5:
             # simulate human's next state
@@ -327,6 +426,7 @@ def plot_rollout():
         h_beliefs = np.vstack((h_beliefs, h_belief.belief))
         r_beliefs = np.vstack((r_beliefs, r_belief.belief))
         r_beliefs_nominal = np.vstack((r_beliefs_nominal, r_belief_nominal.belief))
+        r_beliefs_beta = np.dstack((r_beliefs_beta, r_belief_beta.belief))
         # save human's actual intended goal
         h_goal_idxs.append(np.argmin(np.linalg.norm(human.goal - goals, axis=0)))
         # save robot's actual intended goal
@@ -363,6 +463,12 @@ def plot_rollout():
         h_goal_ax.plot(h_goal_idxs, c="blue", label="h goal")
         h_goal_ax.plot(r_goal_idxs, c="red", label="r goal")
         h_goal_ax.legend()
+
+        r_beta_ax.clear()
+        # for now, plotting marginalized belief
+        for beta_idx in range(r_belief_beta.betas.shape[0]):
+            r_beta_ax.plot(r_beliefs_beta[:,beta_idx,:].sum(axis=0), label=f"b={r_belief_beta.betas[beta_idx]}")
+        r_beta_ax.legend()
 
         plt.pause(0.01)
     plt.show()
