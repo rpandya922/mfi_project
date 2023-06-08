@@ -140,7 +140,7 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
                 # compute robot plan given this goal
                 xr_plan = get_robot_plan(robot, horizon=k_plan, goal=goal)
                 r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
-            # import ipdb; ipdb.set_trace()
+            import ipdb; ipdb.set_trace()
             # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
             r_beliefs = np.array(r_beliefs)
             # TODO: set goal only if specified
@@ -323,6 +323,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
             
             # NOTE: don't put any code in the loop after this
             i += 1
+        # TODO: fix this, since I think it messes up data labeling (some trajectories start with empirical labels in the middle because of branching)
         # the trajectory may start from branching point, I have decided not to prepend the "parent trajectory" because that just duplicates some data
         xh_traj = xh_traj[:,0:i+1]
         xr_traj = xr_traj[:,0:i+1]
@@ -508,11 +509,11 @@ def save_dataset():
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 if __name__ == "__main__":
-    # # save_dataset()
-    # # np.random.seed(2)
-    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230602-210158.pt"
-    # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    # plot_model_pred(model_path)
-    # plt.show()
+    # save_dataset()
+    # np.random.seed(2)
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230608-090932.pt"
+    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    plot_model_pred(model_path)
+    plt.show()
 
-    save_dataset()
+    # save_dataset()

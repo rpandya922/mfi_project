@@ -79,7 +79,7 @@ class CBPEstimator():
 
         return belief_post
 
-    def update_belief(self, state, action, r_state):
+    def update_belief(self, state, action, r_state, return_likelihood=False):
         # project chosen action to discrete set
         _, a_idx = self.project_action(action)
 
@@ -103,7 +103,10 @@ class CBPEstimator():
         new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
         # self.belief = new_belief
 
-        return new_belief
+        if not return_likelihood:
+            return new_belief
+        else:
+            return new_belief, y_i
 
     def copy(self):
         return CBPEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
@@ -342,11 +345,12 @@ def plot_rollout():
     r_beliefs = r_belief.belief
     r_beliefs_nominal = r_belief_nominal.belief
     r_beliefs_beta = r_belief_beta.belief
+    r_belief_likelihoods = []
     h_goal_idxs = []
     r_goal_idxs = []
 
     # figure for plotting
-    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 7))
+    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 7))
     axes = np.array(axes).flatten()
     ax = axes[0]
     # make ax equal aspect ratio
@@ -356,6 +360,7 @@ def plot_rollout():
     goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
     h_goal_ax = axes[3]
     r_beta_ax = axes[4]
+    r_likelihoods_ax = axes[5]
 
     for idx in range(N):
         # human.goal = np.array([[-10, 0, 10, 0]]).T
@@ -367,7 +372,7 @@ def plot_rollout():
         # update human's belief
         human.update_belief(robot.x, ur)
         # simulate robot nominal belief update
-        r_belief_nominal.belief = r_belief_nominal.update_belief(human.x, uh, robot.x)
+        r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, robot.x, return_likelihood=True)
         # update robot's belief with cbp
         # r_belief_prior = r_belief.update_belief(human.x, uh, robot.x)
         r_belief_prior = r_belief_nominal.belief
@@ -383,9 +388,9 @@ def plot_rollout():
         # print(np.allclose(r_belief_beta1, r_belief_beta2))
         # print(np.sum(r_belief_beta1 - r_belief_beta2))
         r_belief_beta.belief = r_belief_beta2
-        # TODO: print out the p_u_given_theta for actual action and each theta
 
         if idx > 5:
+            # input(": ")
             # simulate human's next state
             state = human.dynamics.A @ human.x + human.dynamics.B @ uh
             # loop through goals and compute belief update for each
@@ -427,6 +432,7 @@ def plot_rollout():
         r_beliefs = np.vstack((r_beliefs, r_belief.belief))
         r_beliefs_nominal = np.vstack((r_beliefs_nominal, r_belief_nominal.belief))
         r_beliefs_beta = np.dstack((r_beliefs_beta, r_belief_beta.belief))
+        r_belief_likelihoods.append(likelihoods)
         # save human's actual intended goal
         h_goal_idxs.append(np.argmin(np.linalg.norm(human.goal - goals, axis=0)))
         # save robot's actual intended goal
@@ -469,6 +475,12 @@ def plot_rollout():
         for beta_idx in range(r_belief_beta.betas.shape[0]):
             r_beta_ax.plot(r_beliefs_beta[:,beta_idx,:].sum(axis=0), label=f"b={r_belief_beta.betas[beta_idx]}")
         r_beta_ax.legend()
+
+        r_likelihoods_ax.clear()
+        l = np.array(r_belief_likelihoods)
+        for theta_idx in range(r_belief_nominal.thetas.shape[1]):
+            r_likelihoods_ax.plot(l[:,theta_idx], label=f"theta={theta_idx}", c=goal_colors[theta_idx])
+        r_likelihoods_ax.legend()
 
         plt.pause(0.01)
     plt.show()
