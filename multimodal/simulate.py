@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Ellipse
+import cvxpy as cp
 
 from dynamics import Unicycle, LTI
 from safety import MMSafety, MMLongTermSafety, SEASafety 
@@ -246,13 +247,13 @@ def visualize_uncertainty():
                     [0, 1, 0, 0]]) # mapping robot state to [x, y]
     
     # NOTE: need W to be invertible for safety controller to work
-    W = np.diag([0.3, 0.1, 0.3, 0.1])
+    W = np.diag([0.3, 0.01, 0.3, 0.01])
     # W = np.diag([0, 0, 0, 0])
     h_dyn = LTI(0.1, W=W)
     r_dyn = Unicycle(0.1)
     dmin = 1
-    safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    # safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     phis = []
     safety_actives = []
@@ -277,7 +278,8 @@ def visualize_uncertainty():
     prior = np.ones(goals.shape[1]) / goals.shape[1]
     belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1)
     beliefs = prior
-    sigmas = [W.copy() for _ in range(goals.shape[1])]
+    r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
+    sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
 
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 7))
     axes = np.array(axes).flatten()
@@ -296,6 +298,64 @@ def visualize_uncertainty():
         uh = h_dyn.compute_control(xh0, Ch.T @ h_goal, Cr @ xr0)
         ur_ref = r_dyn.compute_goal_control(xr0, r_goal)
         # ur_ref = np.zeros((2,1))
+
+        # compute covariance matrix that's in the direction of the goal
+        sigmas = []
+        for goal_idx in range(goals.shape[1]):
+            # compute angle between human and goal
+            goal = goals[:,[goal_idx]]
+            angle = np.arctan((goal[1,0] - xh0[2,0])/(goal[0,0] - xh0[0,0]))
+            # compute covariance matrix from sigmas[goal_idx] rotated by angle
+            sigma = sigmas_init[goal_idx][[0,2]][:,[0,2]]
+            R = np.array([[np.cos(angle), -np.sin(angle)],
+                            [np.sin(angle), np.cos(angle)]])
+            sigma_rot = R @ sigma @ R.T
+            # set x & y components of sigmas[goal_idx] to sigmas_rot
+            sigma_new = sigmas_init[goal_idx].copy()
+            sigma_new[0,0] = sigma_rot[0,0]
+            sigma_new[0,2] = sigma_rot[0,1]
+            sigma_new[2,0] = sigma_rot[1,0]
+            sigma_new[2,2] = sigma_rot[1,1]
+            sigmas.append(sigma_new)
+
+        # compute smallest ellipse that contains all 3 ellipses defined by sigmas
+        Ai_s = []
+        bi_s = []
+        ci_s = []
+        for goal_idx in range(goals.shape[1]):
+            goal = goals[:,[goal_idx]]
+            sigma = sigmas[goal_idx][[0,2]][:,[0,2]]
+            uh_goal = h_dyn.compute_control(xh0, Ch.T @ goal, Cr @ xr0)
+            xh_next = h_dyn.step_mean(xh0, uh_goal)
+            xh_next = xh_next[[0,2]]
+            bi = -sigma.T @ xh_next
+            ci = -xh_next.T @ sigma @ xh_next - 1
+
+            Ai_s.append(sigma)
+            bi_s.append(bi)
+            ci_s.append(ci.flatten())
+        n = 2
+        Asq = cp.Variable((n,n), symmetric=True)
+        btilde = cp.Variable((n,1))
+        tau = cp.Variable(len(Ai_s))
+        objective = cp.Maximize(cp.log_det(Asq)) # minimize log det A^-1 = -log det A = maximize log det A
+        constraints = []
+        for i in range(len(Ai_s)):
+            c1 = cp.hstack([Asq - tau[i]*Ai_s[i], btilde - tau[i]*bi_s[i], np.zeros((2,2))])
+            c2 = cp.hstack([(btilde-tau[i]*bi_s[i]).T, -np.ones((1,1))-tau[i]*ci_s[i], btilde.T])
+            c3 = cp.hstack([np.zeros((2,2)), btilde, -Asq])
+            constraints.append(cp.vstack([c1, c2, c3]) << 0)
+
+        constraints.append(Asq >> 0)
+        constraints.append(tau >= 0)
+        prob = cp.Problem(objective, constraints)
+        prob.solve()
+        # convert Asq and btilde to A and b
+        A = np.linalg.cholesky(Asq.value)
+        b = btilde.value
+        b = np.linalg.inv(A) @ b
+        # TODO: convert A,b into ellipse (i.e. into center and covariance matrix)
+
         # compute safe control
         if type(safe_controller) == MMLongTermSafety:
             ur_ref = lambda xr, xh: r_dyn.compute_goal_control(xr, r_goal)
@@ -352,14 +412,15 @@ def visualize_uncertainty():
         k_sigmas = 3 - slacks
         for i, sigma in enumerate(sigmas):
             k = k_sigmas[i]
-            # compute k-sigma ellipse 
+            # compute k-sigma ellipse
+            sigma = sigma[[0,2]][:,[0,2]]
             eigenvalues, eigenvectors = np.linalg.eig(sigma)
             sqrt_eig = np.sqrt(eigenvalues)
             # use only xy components
-            sqrt_eig = sqrt_eig[[0,2]]
-            eigenvectors = eigenvectors[:,[0,2]]
+            # sqrt_eig = sqrt_eig[[0,2]]
+            # eigenvectors = eigenvectors[:,[0,2]]
             # compute angle of ellipse
-            theta = np.arctan2(eigenvectors[1,0], eigenvectors[0,0])
+            theta = np.arctan(eigenvectors[1,0]/eigenvectors[0,0])
             # compute human's next state wrt this goal
             uh_i = h_dyn.compute_control(xh0, Ch.T @ goals[:,[i]], Cr @ xr0)
             xh_next = h_dyn.step_mean(xh0, uh_i)

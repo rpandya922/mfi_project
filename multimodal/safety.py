@@ -75,6 +75,7 @@ class MMSafety():
             sigma = sigmas[i]
             # TODO: solve as QCQP (for speed). for now, use scipy.optimize.minimize 
             obj = lambda x: -(x @ grad_phi_xh_flat) # so it's in the form obj(x) -> min
+            # TODO: can maybe be solved for noninvertible sigma if we take only invertible submatrix (since we don't care about x)
             const = lambda x: -(x.T @ sigma @ x) + 1 # so it's in the form const(x) >= 0
             res = minimize(obj, np.zeros(4), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
             gammas[i] = -res.fun # negate objective value because we minimized -x^T grad_phi_xh, but wanted to maximize x^T grad_phi_xh
