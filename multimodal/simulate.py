@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Ellipse
 import cvxpy as cp
+from scipy.linalg import sqrtm
 
 from dynamics import Unicycle, LTI
 from safety import MMSafety, MMLongTermSafety, SEASafety 
@@ -263,7 +264,7 @@ def visualize_uncertainty():
     # randomly initialize 3 goals
     goals = np.random.uniform(-10, 10, (2, 3))
     h_goal = goals[:,[0]]
-    r_goal = goals[:,0]
+    r_goal = goals[:,2]
 
     # initial positions
     xh0 = np.array([[0, 0, 0, 0]]).T
@@ -304,7 +305,11 @@ def visualize_uncertainty():
         for goal_idx in range(goals.shape[1]):
             # compute angle between human and goal
             goal = goals[:,[goal_idx]]
-            angle = np.arctan((goal[1,0] - xh0[2,0])/(goal[0,0] - xh0[0,0]))
+            # compute human's next state wrt this goal
+            uh_goal = h_dyn.compute_control(xh0, Ch.T @ goal, Cr @ xr0)
+            xh_next = h_dyn.step_mean(xh0, uh_goal)
+            angle = np.arctan((goal[1,0] - xh_next[2,0])/(goal[0,0] - xh_next[0,0]))
+            # angle = np.arctan((goal[1,0] - xh0[2,0])/(goal[0,0] - xh0[0,0]))
             # compute covariance matrix from sigmas[goal_idx] rotated by angle
             sigma = sigmas_init[goal_idx][[0,2]][:,[0,2]]
             R = np.array([[np.cos(angle), -np.sin(angle)],
@@ -324,16 +329,17 @@ def visualize_uncertainty():
         ci_s = []
         for goal_idx in range(goals.shape[1]):
             goal = goals[:,[goal_idx]]
-            sigma = sigmas[goal_idx][[0,2]][:,[0,2]]
+            Ai = np.linalg.inv(sigmas[goal_idx][[0,2]][:,[0,2]])
             uh_goal = h_dyn.compute_control(xh0, Ch.T @ goal, Cr @ xr0)
             xh_next = h_dyn.step_mean(xh0, uh_goal)
             xh_next = xh_next[[0,2]]
-            bi = -sigma.T @ xh_next
-            ci = -xh_next.T @ sigma @ xh_next - 1
+            bi = -Ai.T @ xh_next
+            ci = xh_next.T @ Ai @ xh_next - 1
 
-            Ai_s.append(sigma)
+            Ai_s.append(Ai)
             bi_s.append(bi)
             ci_s.append(ci.flatten())
+        # solution from Boyd "Convex Optimization" 8.4.1
         n = 2
         Asq = cp.Variable((n,n), symmetric=True)
         btilde = cp.Variable((n,1))
@@ -341,20 +347,27 @@ def visualize_uncertainty():
         objective = cp.Maximize(cp.log_det(Asq)) # minimize log det A^-1 = -log det A = maximize log det A
         constraints = []
         for i in range(len(Ai_s)):
-            c1 = cp.hstack([Asq - tau[i]*Ai_s[i], btilde - tau[i]*bi_s[i], np.zeros((2,2))])
+            c1 = cp.hstack([Asq - tau[i]*Ai_s[i], btilde - tau[i]*bi_s[i], np.zeros((n,n))])
             c2 = cp.hstack([(btilde-tau[i]*bi_s[i]).T, -np.ones((1,1))-tau[i]*ci_s[i], btilde.T])
-            c3 = cp.hstack([np.zeros((2,2)), btilde, -Asq])
-            constraints.append(cp.vstack([c1, c2, c3]) << 0)
+            c3 = cp.hstack([np.zeros((n,n)), btilde, -Asq])
+            constr = (cp.vstack([c1, c2, c3]) << 0)
+            constraints.append(constr)
 
         constraints.append(Asq >> 0)
         constraints.append(tau >= 0)
-        prob = cp.Problem(objective, constraints)
-        prob.solve()
-        # convert Asq and btilde to A and b
-        A = np.linalg.cholesky(Asq.value)
-        b = btilde.value
-        b = np.linalg.inv(A) @ b
-        # TODO: convert A,b into ellipse (i.e. into center and covariance matrix)
+        if idx == 0:
+            # NOTE: disabling this for now because it's slow
+            prob = cp.Problem(objective, constraints)
+            prob.solve(solver=cp.SCS, verbose=False)
+            # print(prob.status)
+            # convert Asq and btilde to A and b
+            A = sqrtm(Asq.value)
+            b = np.linalg.inv(A) @ btilde.value
+            # convert A,b into ellipse (i.e. into center and covariance matrix)
+            sigma_enclose = np.linalg.inv(A.T @ A)
+            c_enclose = -np.linalg.inv(A) @ b
+        else:
+            c_enclose = xh0[[0,2]]
 
         # compute safe control
         if type(safe_controller) == MMLongTermSafety:
@@ -431,6 +444,12 @@ def visualize_uncertainty():
         ax.scatter(xh0[0], xh0[2], c="blue")
         ax.scatter(xr0[0], xr0[1], c="red")
         ax.scatter(goals[0], goals[1], c=goal_colors)
+        # plot enclosing ellipse in red outline
+        eigenvalues, eigenvectors = np.linalg.eig(sigma_enclose)
+        sqrt_eig = np.sqrt(eigenvalues)
+        theta = np.arctan(eigenvectors[1,0]/eigenvectors[0,0])
+        ellipse = Ellipse(xy=c_enclose, width=2*3*sqrt_eig[0], height=2*3*sqrt_eig[1], angle=np.rad2deg(theta), color="red", fill=False)
+        ax.add_patch(ellipse)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
         plt.pause(0.01)
