@@ -140,7 +140,7 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
                 # compute robot plan given this goal
                 xr_plan = get_robot_plan(robot, horizon=k_plan, goal=goal)
                 r_beliefs.append(softmax(model(*process_model_input(xh_hist, xr_hist, xr_plan.T, goals))).detach().numpy()[0])
-            import ipdb; ipdb.set_trace()
+            # import ipdb; ipdb.set_trace()
             # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
             r_beliefs = np.array(r_beliefs)
             # TODO: set goal only if specified
@@ -243,19 +243,22 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     all_xh_traj = []
     all_xr_traj = []
     all_goals_reached = []
+    branching_nums = []
     goals_reached = np.zeros(goals.shape[1])
     # keep track of initial conditions for branching points
-    init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1]) for _ in range(n_traj)] # start from the first initial contition n_traj times
-
+    branching_num = 0
+    init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num) for _ in range(n_traj)] # start from the first initial contition n_traj times
+    branching_num += 1
+    fig, ax = plt.subplots()
     while len(init_conds) > 0:
         # set the human and robot's initial states
-        xh, xr, is_branch, h_belief = init_conds.pop(0)
+        xh, xr, is_branch, h_belief, b_num_curr = init_conds.pop(0)
         human.x = xh
         human.belief.belief = h_belief
         robot.x = xr
         # randomly set the robot's goal to one of the options
         robot.set_goal(goals[:,[np.random.randint(0, goals.shape[1])]])
-        # generate a synthetic obstacle for the robot that lies between the robotand its goal
+        # generate a synthetic obstacle for the robot that lies between the robot and its goal
         # get bounds of the rectangle that contains the robot and its goal
         x_min = min(robot.x[0], robot.goal[0])
         x_max = max(robot.x[0], robot.goal[0])
@@ -275,8 +278,8 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
 
         xh_traj = np.zeros((human.dynamics.n, arr_size+1))
         xr_traj = np.zeros((robot.dynamics.n, arr_size+1))
-        xh_traj[:,[0]] = xh0
-        xr_traj[:,[0]] = xr0
+        xh_traj[:,[0]] = human.x
+        xr_traj[:,[0]] = robot.x
         h_goal_reached = -1
 
         r_goal_idx = np.argmin(np.linalg.norm(goals[[0,2]] - robot.goal[[0,2]], axis=0))
@@ -302,7 +305,8 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
 
             # save new initial conditions if we're at a branching point
             if i in branching_times and not is_branch:
-                init_conds = init_conds + [((xh, xr, True, human.belief.belief.copy())) for _ in range(n_traj)]
+                init_conds = init_conds + [((xh, xr, True, human.belief.belief.copy(), branching_num)) for _ in range(n_traj)]
+                branching_num += 1
 
             # save data
             xh_traj[:,[i+1]] = xh
@@ -334,15 +338,48 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
         all_xh_traj.append(xh_traj)
         all_xr_traj.append(xr_traj)
         all_goals_reached.append(h_goal_reached)
+        branching_nums.append(b_num_curr)
+
+        # (temporary) plotting
+        # ax.cla()
+        # ax.set_aspect('equal', adjustable='box')
+        # # plot trajectory trail so far
+        # overlay_timesteps(ax, xh_traj, xr_traj, n_steps=i)
+        # ax.scatter(goals[0], goals[2], c="green", s=100)
+        # ax.set_xlim(-10, 10)
+        # ax.set_ylim(-10, 10)
+        # plt.pause(0.01)
     # return the probability of each goal being the human's intention
+    # print(np.sum(goals_reached))
+    # plt.show()
+    # import ipdb; ipdb.set_trace()
+    # 1/0
     return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals
 
-def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5):
+def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5, branching=True, n_traj=10):
 
     input_traj = []
     robot_future = []
     input_goals = []
     labels = []
+
+    if branching:
+        n_traj_groups = int(len(all_xh_traj) / n_traj)
+        for i in range(n_traj_groups):
+            traj_group_idxs = range(i*n_traj, (i+1)*n_traj)
+            xh_traj_group = [all_xh_traj[j] for j in traj_group_idxs]
+            xr_traj_group = [all_xr_traj[j] for j in traj_group_idxs]
+            goals_reached_group = [all_goals_reached[j] for j in traj_group_idxs]
+            goal_probs_group = np.zeros(goal_probs.shape)
+            for goal_reached in goals_reached_group:
+                goal_probs_group[goal_reached] += 1
+            goal_probs_group /= n_traj
+
+            it, rf, ig, l = create_labels(xh_traj_group, xr_traj_group, goals_reached_group, goal_probs_group, goals, mode=mode, history=history, horizon=horizon, branching=False, n_traj=n_traj)
+            input_traj += it
+            robot_future += rf
+            input_goals += ig
+            labels += l
 
     for i in range(len(all_xh_traj)):
         goal_prob_label = goal_probs.copy()
@@ -390,7 +427,7 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
 
     return input_traj, robot_future, input_goals, labels
 
-def create_dataset(n_init_cond=200, branching=True):
+def create_dataset(n_init_cond=200, branching=True, n_traj=10):
     # generate n_init_cond initial conditions and find goal_probs for each
 
     # saving raw data
@@ -423,9 +460,9 @@ def create_dataset(n_init_cond=200, branching=True):
 
         # simulate trajectories
         if not branching:
-            data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=50)
+            data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=n_traj)
         else:
-            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branching_times=[10, 20, 50])
+            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=n_traj, branching_times=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
         xh_traj.append(data[0])
         xr_traj.append(data[1])
         goals_reached.append(data[2])
@@ -434,12 +471,12 @@ def create_dataset(n_init_cond=200, branching=True):
 
     return xh_traj, xr_traj, goals_reached, goal_probs, all_goals
 
-def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl"):
+def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl", branching=True, n_traj=10):
     # check if path exists
     if not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, "wb") as f:
-        pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4]}, f)
+        pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj}, f)
 
 def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20):
     with open(raw_data_path, "rb") as f:
@@ -449,15 +486,17 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
     goals_reached = raw_data["goals_reached"]
     goal_probs = raw_data["goal_probs"]
     goals = raw_data["goals"]
+    branching = raw_data["branching"]
+    n_traj = raw_data["n_traj"]
 
     input_traj = []
     robot_future = []
     input_goals = []
     labels = []
 
-    n_traj = len(xh_traj)
-    for i in tqdm(range(n_traj)):
-        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon)
+    n_traj_total = len(xh_traj)
+    for i in tqdm(range(n_traj_total)):
+        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon, branching=branching, n_traj=n_traj)
         input_traj += it
         robot_future += rf
         input_goals += ig
@@ -504,16 +543,16 @@ def plot_model_pred(model_path):
 def save_dataset():
     raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
     processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
-    dataset = create_dataset(n_init_cond=200, branching=True)
-    save_data(dataset, path=raw_data_path)
+    dataset = create_dataset(n_init_cond=200, branching=True, n_traj=50)
+    save_data(dataset, path=raw_data_path, branching=True, n_traj=50)
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 if __name__ == "__main__":
-    # save_dataset()
+    # # save_dataset()
     # np.random.seed(2)
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230608-090932.pt"
-    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    plot_model_pred(model_path)
-    plt.show()
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230608-090932.pt"
+    # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    # plot_model_pred(model_path)
+    # plt.show()
 
-    # save_dataset()
+    save_dataset()
