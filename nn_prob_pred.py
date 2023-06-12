@@ -249,7 +249,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     branching_num = 0
     init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num) for _ in range(n_traj)] # start from the first initial contition n_traj times
     branching_num += 1
-    fig, ax = plt.subplots()
+    # fig, ax = plt.subplots()
     while len(init_conds) > 0:
         # set the human and robot's initial states
         xh, xr, is_branch, h_belief, b_num_curr = init_conds.pop(0)
@@ -477,6 +477,7 @@ def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl"
         os.makedirs(os.path.dirname(path))
     with open(path, "wb") as f:
         pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj}, f)
+    print(f"saved raw data to {path}")
 
 def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20):
     with open(raw_data_path, "rb") as f:
@@ -507,6 +508,7 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
         os.makedirs(os.path.dirname(processed_data_path))
     with open(processed_data_path, "wb") as f:
         pickle.dump({"input_traj": torch.stack(input_traj), "robot_future": torch.stack(robot_future), "input_goals": torch.stack(input_goals), "labels": torch.stack(labels)}, f)
+    print(f"saved processed data to {processed_data_path}")
 
 def plot_model_pred(model_path):
     # load model
@@ -541,7 +543,7 @@ def plot_model_pred(model_path):
     run_trajectory(human, robot, goals, model=model, plot=True)
 
 def save_dataset():
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
+    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
     processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
     dataset = create_dataset(n_init_cond=200, branching=True, n_traj=50)
     save_data(dataset, path=raw_data_path, branching=True, n_traj=50)
