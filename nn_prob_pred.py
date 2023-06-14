@@ -5,6 +5,7 @@ softmax = torch.nn.Softmax(dim=1)
 from tqdm import tqdm
 import pickle
 import os
+import h5py
 
 from intention_predictor import create_model
 from dynamics import DIDynamics
@@ -549,6 +550,75 @@ def save_dataset():
     save_data(dataset, path=raw_data_path, branching=True, n_traj=50)
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
+def convert_raw_to_h5(raw_data_path):
+    with open(raw_data_path, "rb") as f:
+        raw_data = pickle.load(f)
+    xh_traj = raw_data["xh_traj"]
+    xr_traj = raw_data["xr_traj"]
+    goals_reached = raw_data["goals_reached"]
+    goal_probs = raw_data["goal_probs"]
+    goals = raw_data["goals"]
+    branching = raw_data["branching"]
+    n_traj = raw_data["n_traj"]
+
+    # save in h5 file
+    h5_path = raw_data_path.replace(".pkl", ".h5")
+    with h5py.File(h5_path, "w") as f:
+        f.attrs["branching"] = branching
+        f.attrs["n_traj"] = n_traj
+        f.attrs["n_init"] = len(xh_traj)
+        for i in tqdm(range(len(xh_traj))):
+            init_grp = f.create_group(f"init_{i}")
+            init_grp.create_dataset("goals_reached", data=goals_reached[i])
+            init_grp.create_dataset("goal_probs", data=goal_probs[i])
+            init_grp.create_dataset("goals", data=goals[i])
+            init_grp.attrs["n_traj_init"] = len(xh_traj[i])
+            for j in range(len(xh_traj[i])):
+                init_grp.create_dataset(f"xh_traj_{j}", data=xh_traj[i][j])
+                init_grp.create_dataset(f"xr_traj_{j}", data=xr_traj[i][j])
+    print(f"converted to h5 file {h5_path}")
+
+def process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20):
+    raw_data = h5py.File(raw_data_path, "r")
+    branching = raw_data.attrs["branching"]
+    n_traj = raw_data.attrs["n_traj"]
+    n_init = raw_data.attrs["n_init"]
+
+    with h5py.File(processed_data_path, "w") as f:
+        for i_init in tqdm(range(n_init)):
+            # load all trajectories for this initial condition
+            grp = raw_data[f"init_{i_init}"]
+            n_traj_init = grp.attrs["n_traj_init"]
+            xh_traj = [grp[f"xh_traj_{j}"] for j in range(n_traj_init)]
+            xr_traj = [grp[f"xr_traj_{j}"] for j in range(n_traj_init)]
+            goals_reached = grp["goals_reached"][:]
+            goal_probs = grp["goal_probs"][:]
+            goals = grp["goals"][:]
+
+            it, rf, ig, l = create_labels(xh_traj, xr_traj, goals_reached, goal_probs, goals, history=history, horizon=horizon, branching=branching, n_traj=n_traj)
+            it = torch.stack(it)
+            rf = torch.stack(rf)
+            ig = torch.stack(ig)
+            l = torch.stack(l)
+
+            if i_init == 0:
+                # create datasets
+                input_traj = f.create_dataset("input_traj", data=it, maxshape=(None, it.shape[1], it.shape[2]))
+                robot_future = f.create_dataset("robot_future", data=rf, maxshape=(None, rf.shape[1], rf.shape[2]))
+                input_goals = f.create_dataset("input_goals", data=ig, maxshape=(None, ig.shape[1], ig.shape[2]))
+                labels = f.create_dataset("labels", data=l, maxshape=(None, l.shape[1]))
+            else:
+                # append to datasets
+                input_traj.resize((input_traj.shape[0] + it.shape[0]), axis=0)
+                input_traj[-it.shape[0]:] = it
+                robot_future.resize((robot_future.shape[0] + rf.shape[0]), axis=0)
+                robot_future[-rf.shape[0]:] = rf
+                input_goals.resize((input_goals.shape[0] + ig.shape[0]), axis=0)
+                input_goals[-ig.shape[0]:] = ig
+                labels.resize((labels.shape[0] + l.shape[0]), axis=0)
+                labels[-l.shape[0]:] = l
+    print(f"saved processed data to {processed_data_path}")
+
 if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2)
@@ -557,4 +627,10 @@ if __name__ == "__main__":
     # plot_model_pred(model_path)
     # plt.show()
 
-    save_dataset()
+    # save_dataset()
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
+    convert_raw_to_h5(raw_data_path)
+
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.h5"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.h5"
+    process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)

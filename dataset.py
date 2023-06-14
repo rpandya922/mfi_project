@@ -1,4 +1,5 @@
 import pickle
+import h5py
 import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
@@ -63,9 +64,14 @@ class ProbSimTrajDataset(Dataset):
         self.history = history
         self.horizon = horizon
 
-        # load pickle file containing processed data
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        # get file extension
+        ext = path.split(".")[-1]
+        if ext == "pkl":
+            # load pickle file containing processed data
+            with open(path, "rb") as f:
+                data = pickle.load(f)
+        elif ext == "h5":
+            data = h5py.File(path, "r")
 
         input_traj = data["input_traj"]
         robot_future = data["robot_future"]
