@@ -70,6 +70,72 @@ def train(model, optimizer, trainset_loader, valset_loader, epoch=50):
     writer.close()
     return all_train_loss, all_val_loss
 
+def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
+    all_train_loss = []
+    all_val_loss = []
+    batch_size = trainset_loader.batch_size
+
+    # create tensorboard writer
+    run_name = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()) + f"_lr_{optimizer.param_groups[0]['lr']}_bs_{batch_size}"
+    writer = SummaryWriter(log_dir=os.path.join(".", "data", "prob_pred", "runs", run_name))
+
+    # create directory for saving checkpoints
+    checkpoint_dir = os.path.join(".", "data", "prob_pred", "checkpoints", run_name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    loss = nn.CrossEntropyLoss(reduction="mean").to(device)
+
+    running_loss = 0.0
+    for ep in tqdm(range(epoch)):
+
+        # test on validation
+        if ep % 2 == 0:
+            model.eval()
+            val_loss = 0
+            for batch_idx, (data, target) in enumerate(valset_loader):
+                # send data to device
+                data = [d.to(device) for d in data]
+                target = target.to(device)
+                
+                model_out = model(*data)
+
+                val_loss += loss(model_out, target).item()
+            all_val_loss.append(val_loss / (batch_idx+1))
+            writer.add_scalar("Loss/val", all_val_loss[-1], ep)
+
+            # save model
+            torch.save(model.state_dict(), os.path.join(checkpoint_dir, f"model_{ep}.pt"))
+
+        model.train()
+        total_loss = 0
+        for batch_idx, (data, target) in enumerate(trainset_loader):
+            # send data to device
+            data = [d.to(device) for d in data]
+            target = target.to(device)
+
+            # zero gradients
+            optimizer.zero_grad()
+
+            # forward pass
+            model_out = model(*data)
+
+            # compute loss
+            output = loss(model_out, target)
+            total_loss += output.item()
+
+            output.backward()
+            optimizer.step()
+
+            running_loss += output.item()
+            if batch_idx % 100 == 99:
+                writer.add_scalar("Loss/running train", running_loss / 100, ep*len(trainset_loader) + batch_idx)
+                running_loss = 0.0
+        all_train_loss.append(total_loss / (batch_idx+1))
+        writer.add_scalar("Loss/train", all_train_loss[-1], ep)
+    writer.flush()
+    writer.close()
+    return all_train_loss, all_val_loss
+
 class FC(nn.Module):
     def __init__(self, in_dim=72):
         super(FC, self).__init__()
@@ -184,19 +250,22 @@ def train_prob_sim(save_model=True):
     num_layers = 2
     
     # load datasets
-    train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
-    dataset = ProbSimTrajDataset(path=train_path)
-    loader = DataLoader(dataset, batch_size=256, shuffle=True)
+    # train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
+    train_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    dataset = ProbSimTrajDataset(path=train_path, mode="train")
+    loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=6)
 
     # validation data
-    val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
-    val_dataset = ProbSimTrajDataset(path=val_path)
-    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+    # val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
+    val_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    val_dataset = ProbSimTrajDataset(path=val_path, mode="val")
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=6)
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     predictor = predictor.to(device)
     optimizer = torch.optim.Adam(predictor.parameters(), lr=1e-3, weight_decay=1e-2)
-    all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
+    # all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
+    all_train_loss, all_val_loss = train_large(predictor, optimizer, loader, val_loader, epoch=20)
 
     if save_model:
         # save model into new file based on date/time
