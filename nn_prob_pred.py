@@ -628,9 +628,9 @@ if __name__ == "__main__":
     # plt.show()
 
     # save_dataset()
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
+    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
     convert_raw_to_h5(raw_data_path)
 
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.h5"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.h5"
+    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.h5"
+    processed_data_path = "./data/prob_pred/bayes_prob_val_branching_processed.h5"
     process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
