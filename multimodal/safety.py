@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize, NonlinearConstraint
-from scipy.stats import norm
+from scipy.stats import norm, chi2
 
 class MMSafety():
     def __init__(self, r_dyn, h_dyn, dmin=1, eta=0.1, lambda_r=0.1, k_phi=0.5):
@@ -10,6 +10,7 @@ class MMSafety():
         self.eta = eta
         self.lambda_r = lambda_r
         self.k_phi = k_phi
+        self.slacks_prev = np.zeros(3)
 
     def slack_var_helper_(self, xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks):
         diffs = np.zeros((thetas.shape[1], thetas.shape[1]))
@@ -83,13 +84,22 @@ class MMSafety():
         # compute slack variables
         k = 3 # nominal 3-sigma bound
         epsilon = 0.003 # 99.7% confidence
-        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s)
+        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s) + np.linalg.norm(s)
         const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
-        lb = 0
-        ub = np.inf
-        res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints={'type': 'ineq', 'fun': const})
+        # const = lambda s: (belief @ chi2.cdf((k-s)**2, df=xh.shape[0])) - (1-epsilon) # multivariate normal CDF 
+        const_lb = lambda s: s # force slack variables to be positive
+        constraints = [{'type': 'ineq', 'fun': const}, {'type': 'ineq', 'fun': const_lb}]
+        res = minimize(obj, self.slacks_prev, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
+        # lb = 0
+        # ub = np.inf
         # res = minimize(obj, np.zeros(thetas.shape[1]), method="trust-constr", constraints=NonlinearConstraint(const, lb, ub))
         slacks = res.x
+        self.slacks_prev = slacks
+        
+        # if time > 0:
+        #     import ipdb; ipdb.set_trace()
 
         # compute safety constraint per goal
         constraints = []
@@ -589,7 +599,8 @@ class SEASafety():
 
         # check if safe control is necessary (i.e. if safety constraint is active)
         d_dot = (d_p.T @ d_v) / d
-        phi = self.dmin**2 + self.eta + lambda_SEA - d**2 - self.k_phi*d_dot.item()
+        # phi = self.dmin**2 + self.eta + lambda_SEA - d**2 - self.k_phi*d_dot.item()
+        phi = self.dmin**2 - d**2 - self.k_phi*d_dot.item() # without discrete-time compensation terms
         if phi > 0:
             # safety constraint is active
             return res.x[:,None], phi, True
