@@ -89,10 +89,10 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
     for ep in tqdm(range(epoch)):
 
         # test on validation
-        if ep % 2 == 0:
+        if ep % 4 == 0:
             model.eval()
             val_loss = 0
-            for batch_idx, (data, target) in enumerate(valset_loader):
+            for batch_idx, (data, target) in enumerate(tqdm(valset_loader)):
                 # send data to device
                 data = [d.to(device) for d in data]
                 target = target.to(device)
