@@ -184,8 +184,10 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
                 if all_r_beliefs is not None:
                     all_r_beliefs = np.dstack((all_r_beliefs, np.zeros((goals.shape[1], goals.shape[1], arr_size))))
                 # print("expanding arrays")
+            goal_dist = np.linalg.norm(xh[[0,2]] - human.goal[[0,2]])
             dists = np.linalg.norm(goals[[0,2]] - xh[[0,2]], axis=0)
-            if np.min(dists) < 0.5:
+            # goal_dist = np.min(dists)
+            if goal_dist < 0.5:
                 h_goal_reached = np.argmin(dists)
                 break
         
@@ -544,10 +546,10 @@ def plot_model_pred(model_path):
     run_trajectory(human, robot, goals, model=model, plot=True)
 
 def save_dataset():
-    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
-    dataset = create_dataset(n_init_cond=200, branching=True, n_traj=50)
-    save_data(dataset, path=raw_data_path, branching=True, n_traj=50)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
+    dataset = create_dataset(n_init_cond=800, branching=True, n_traj=10)
+    save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
     process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
 def convert_raw_to_h5(raw_data_path):
@@ -661,12 +663,12 @@ def visualize_dataset(raw_data_path):
 if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2)
-    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230608-090932.pt"
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230615-133340.pt"
     # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
     # plot_model_pred(model_path)
     # plt.show()
 
-    # save_dataset()
+    save_dataset()
 
     # raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
     # convert_raw_to_h5(raw_data_path)
@@ -675,5 +677,5 @@ if __name__ == "__main__":
     # processed_data_path = "./data/prob_pred/bayes_prob_val_branching_processed.h5"
     # process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
 
-    raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
-    visualize_dataset(raw_data_path)
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
+    # visualize_dataset(raw_data_path)
