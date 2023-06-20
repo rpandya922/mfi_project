@@ -619,6 +619,45 @@ def process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=2
                 labels[-l.shape[0]:] = l
     print(f"saved processed data to {processed_data_path}")
 
+def visualize_dataset(raw_data_path):
+    # open h5 file
+    raw_data = h5py.File(raw_data_path, "r")
+    # NOTE: only run this locally so we don't try to transfer the whole dataset over ssh
+    n_traj = raw_data.attrs["n_traj"]
+    n_init = raw_data.attrs["n_init"]
+
+    for i_init in tqdm(range(n_init)):
+        # load all trajectories for this initial condition
+        grp = raw_data[f"init_{i_init}"]
+        n_traj_init = grp.attrs["n_traj_init"]
+        xh_traj = [grp[f"xh_traj_{j}"] for j in range(n_traj_init)]
+        xh0 = xh_traj[0][:,0]
+        xr_traj = [grp[f"xr_traj_{j}"] for j in range(n_traj_init)]
+        xr0 = xr_traj[0][:,0]
+        goals_reached = grp["goals_reached"][:]
+        goal_probs = grp["goal_probs"][:]
+        goals = grp["goals"][:]
+
+        for goal_idx in range(3):
+            # get all trajectories that reached this goal
+            xh_traj_goal = [xh_traj[j] for j in range(n_traj_init) if goals_reached[j] == goal_idx]
+            xr_traj_goal = [xr_traj[j] for j in range(n_traj_init) if goals_reached[j] == goal_idx]
+
+            # plot trajectories
+            fig, ax = plt.subplots()
+            ax.set_aspect('equal', adjustable='box')
+            for i in range(len(xh_traj_goal)):
+                overlay_timesteps(ax, xh_traj_goal[i], xr_traj_goal[i], alpha=0.7, n_steps=xh_traj_goal[i].shape[1])
+            ax.scatter(goals[0], goals[2], c="green", s=100)
+            # plot initial human and robot state
+            ax.scatter(xh0[0], xh0[2], c="blue", s=100)
+            ax.scatter(xr0[0], xh0[2], c="red", s=100)
+            ax.set_xlim(-10, 10)
+            ax.set_ylim(-10, 10)
+            plt.pause(0.01)
+
+        import ipdb; ipdb.set_trace()
+
 if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2)
@@ -628,9 +667,13 @@ if __name__ == "__main__":
     # plt.show()
 
     # save_dataset()
-    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
-    convert_raw_to_h5(raw_data_path)
 
-    raw_data_path = "./data/prob_pred/bayes_prob_val_branching.h5"
-    processed_data_path = "./data/prob_pred/bayes_prob_val_branching_processed.h5"
-    process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
+    # raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
+    # convert_raw_to_h5(raw_data_path)
+
+    # raw_data_path = "./data/prob_pred/bayes_prob_val_branching.h5"
+    # processed_data_path = "./data/prob_pred/bayes_prob_val_branching_processed.h5"
+    # process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
+
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
+    visualize_dataset(raw_data_path)

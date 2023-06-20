@@ -53,7 +53,7 @@ def process_model_input(xh_hist, xr_hist, xr_plan, goals):
 
     return traj_hist, xr_plan, goals
 
-def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
+def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2, **kwargs):
     
     if len(xh_traj) > 0:
         # human trajectory
@@ -62,7 +62,7 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blu
 
         n_steps = xh_traj.shape[1]
         norm = plt.Normalize(0, n_steps)
-        lc = LineCollection(segments, cmap=h_cmap, norm=norm, linewidth=linewidth)
+        lc = LineCollection(segments, cmap=h_cmap, norm=norm, linewidth=linewidth, **kwargs)
         # Set the values used for colormapping
         lc.set_array(np.arange(n_steps+1))
         line = ax.add_collection(lc)
@@ -75,7 +75,7 @@ def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blu
 
         n_steps = xr_traj.shape[1]
         norm = plt.Normalize(0, n_steps)
-        lc = LineCollection(segments, cmap=r_cmap, norm=norm, linewidth=linewidth)
+        lc = LineCollection(segments, cmap=r_cmap, norm=norm, linewidth=linewidth, **kwargs)
         # Set the values used for colormapping
         lc.set_array(np.arange(n_steps+1))
         line = ax.add_collection(lc)
