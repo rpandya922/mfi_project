@@ -338,6 +338,7 @@ def visualize_uncertainty():
     phi_ax = axes[2]
     dist_ax = axes[3]
     slack_ax = axes[4]
+    control_ax = axes[5]
 
     xh_traj = xh0
     xr_traj = xr0
@@ -387,7 +388,7 @@ def visualize_uncertainty():
         # compute safe control
         if type(safe_controller) == MMLongTermSafety:
             ur_ref = lambda xr, xh: r_dyn.compute_goal_control(xr, r_goal)
-        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx)
+        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=control_ax)
 
         # update robot's belief
         belief.update_belief(xh0, uh)

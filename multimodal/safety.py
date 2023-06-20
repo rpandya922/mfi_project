@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.optimize import minimize, NonlinearConstraint
 from scipy.stats import norm, chi2
 
@@ -29,7 +30,7 @@ class MMSafety():
         # alpha = 1
         # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
         """
         xr: robot state
         xh: human state
@@ -39,7 +40,9 @@ class MMSafety():
         sigmas: covariance of human's goal reaching distribution (one per goal)
         return_slacks: whether to return slack variables
         time: time at which to compute safe control (for debugging)
+        ax: matplotlib axis to plot on (visualizing controls)
         """
+        plot_controls = (ax is not None)
         # computing cartesian position difference
         Ch = np.array([[1, 0, 0, 0],
                         [0, 0, 1, 0]]) # mapping human state to [x, y]
@@ -112,18 +115,43 @@ class MMSafety():
             S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
             Ls.append(L)
             Ss.append(S)
+            # TODO: compute the tighest constraint and only use that one (they are all parallel constraints)
             # constraints.append({'type': 'ineq', 'fun': lambda u: S - (L @ u).item()})
         
         # compute constraints
         # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
         fun = lambda u: Ss[0] - (Ls[0] @ u).item()
+        fun1 = lambda u: Ss[0] - Ls[0] @ u
         constraints.append({'type': 'ineq', 'fun': fun})
 
         fun = lambda u: Ss[1] - (Ls[1] @ u).item()
+        fun2 = lambda u: Ss[1] - Ls[1] @ u
         constraints.append({'type': 'ineq', 'fun': fun})
 
         fun = lambda u: Ss[2] - (Ls[2] @ u).item()
+        fun3 = lambda u: Ss[2] - Ls[2] @ u
         constraints.append({'type': 'ineq', 'fun': fun})
+
+        # generate meshgrid of controls
+        us = np.linspace(-30, 30, 500)
+        U1, U2 = np.meshgrid(us, us)
+        U = np.vstack((U1.flatten(), U2.flatten()))
+
+        # compute if each point satisfies constraints
+        c1_satisfied = fun1(U) >= 0
+        c2_satisfied = fun2(U) >= 0
+        c3_satisfied = fun3(U) >= 0
+
+        if plot_controls:
+            ax.cla()
+            ax.scatter(U[0,c1_satisfied], U[1,c1_satisfied], c='b', label='c1 satisfied', alpha=0.1, s=2)
+            ax.scatter(U[0,c2_satisfied], U[1,c2_satisfied], c='g', label='c2 satisfied', alpha=0.1, s=2)
+            ax.scatter(U[0,c3_satisfied], U[1,c3_satisfied], c='purple', label='c3 satisfied', alpha=0.1, s=2)
+
+            ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
+
+            ax.set_xlim(-30, 30)
+            ax.set_ylim(-30, 30)
 
         # # compute safe control
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
@@ -148,6 +176,81 @@ class MMSafety():
         if return_slacks:
             ret += (slacks,)
         return ret
+
+    def __call__(self, *args, **kwds):
+        return self.compute_safe_control(*args, **kwds)
+
+class BaselineSafety():
+    def __init__(self, r_dyn, h_dyn, dmin=1, eta=0.1, lambda_r=0.1, k_phi=0.5):
+        self.r_dyn = r_dyn
+        self.h_dyn = h_dyn
+        self.dmin = dmin
+        self.eta = eta
+        self.lambda_r = lambda_r
+        self.k_phi = k_phi
+        self.slacks_prev = np.zeros(3)
+
+    def slack_var_helper_(self, xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks):
+        diffs = np.zeros((thetas.shape[1], thetas.shape[1]))
+        for i in range(thetas.shape[1]):
+            for j in range(thetas.shape[1]):
+                theta_i = thetas[:,[i]]
+                uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
+                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, theta_i)).item() - gammas[i]*(k - slacks[i])
+
+                theta_j = thetas[:,[j]]
+                uh_j = self.h_dyn.compute_control(xh, Ch.T @ theta_j, Cr @ xr)
+                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, theta_j)).item() - gammas[j]*(k - slacks[j])
+                diffs[i,j] = val1 - val2
+        return np.amax(diffs)
+        # try boltzmann operator as continuous approximation of max (may be easier for optimizer)
+        # alpha = 1
+        # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
+
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
+        """
+        xr: robot state
+        xh: human state
+        ur_ref: robot reference control
+        thetas: goal locations
+        belief: probability over goals that human will reach
+        sigmas: covariance of human's goal reaching distribution (one per goal)
+        return_slacks: whether to return slack variables
+        time: time at which to compute safe control (for debugging)
+        ax: matplotlib axis to plot on (visualizing controls)
+        """
+        plot_controls = (ax is not None)
+        # computing cartesian position difference
+        Ch = np.array([[1, 0, 0, 0],
+                        [0, 0, 1, 0]]) # mapping human state to [x, y]
+        Cr = np.array([[1, 0, 0, 0],
+                       [0, 1, 0, 0]]) # mapping robot state to [x, y]
+        xy_h = Ch @ xh
+        xy_r = Cr @ xr
+        d_p = xy_r - xy_h # cartesian position difference
+        d = np.linalg.norm(d_p)
+        
+        # computing cartesian velocity difference
+        Vh = np.array([[0, 1, 0, 0],
+                       [0, 0, 0, 1]]) # mapping human state to [x_dot, y_dot]
+        vxy_h = Vh @ xh
+        vxy_r = np.array([xr[2]*np.cos(xr[3]), xr[2]*np.sin(xr[3])]) # robot velocity in [x, y]
+        d_v = vxy_r - vxy_h # cartesian velocity difference
+
+        # compute grad_phi_xh 
+        grad_phi_xh = np.zeros((1,4))
+        grad_phi_xh += 2*(d_p.T @ Ch)
+        grad_phi_xh += self.k_phi*((d_v.T @ Ch)/d + (d_p.T@self.h_dyn.B.T)/d - ((d_p.T@d_v) * d_p.T @ Ch)/(d**3))
+        grad_phi_xh_flat = grad_phi_xh.flatten()
+
+        # compute grad_phi_xr
+        V = np.array([[0, 0, np.cos(xr[3]).item(), (-xr[2]*np.sin(xr[3])).item()],
+                      [0, 0, np.sin(xr[3]).item(), (xr[2]*np.cos(xr[3])).item()]]) # p_dv_p_xr
+        grad_phi_xr = np.zeros((1,4))
+        grad_phi_xr += -2*(d_p.T @ Cr)
+        grad_phi_xr += -self.k_phi*((d_v.T @ Cr)/d + (d_p.T @ V)/d - ((d_p.T@d_v) * d_p.T @ Cr)/(d**3))
+        
+        # sample points from 3-sigma ellipse of each goal
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
