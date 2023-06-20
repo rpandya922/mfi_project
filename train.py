@@ -12,7 +12,7 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset, ProbSimTrajDataset
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
 print(f"Training with device {device}")
 
@@ -127,8 +127,8 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
             optimizer.step()
 
             running_loss += output.item()
-            if batch_idx % 100 == 99:
-                writer.add_scalar("Loss/running train", running_loss / 100, ep*len(trainset_loader) + batch_idx)
+            if batch_idx % 1000 == 999:
+                writer.add_scalar("Loss/running train", running_loss / 1000, ep*len(trainset_loader) + batch_idx)
                 running_loss = 0.0
         all_train_loss.append(total_loss / (batch_idx+1))
         writer.add_scalar("Loss/train", all_train_loss[-1], ep)
@@ -250,20 +250,20 @@ def train_prob_sim(save_model=True):
     num_layers = 2
     
     # load datasets
-    # train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
-    train_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
+    # train_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
     dataset = ProbSimTrajDataset(path=train_path, mode="train")
     loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=6)
 
     # validation data
-    # val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
-    val_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
-    val_dataset = ProbSimTrajDataset(path=val_path, mode="val")
+    val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
+    # val_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    val_dataset = ProbSimTrajDataset(path=val_path, mode="val", stats_file=dataset.stats_file)
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=6)
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
     predictor = predictor.to(device)
-    optimizer = torch.optim.Adam(predictor.parameters(), lr=1e-3, weight_decay=1e-2)
+    optimizer = torch.optim.AdamW(predictor.parameters(), lr=4e-3, weight_decay=1e-2)
     # all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
     all_train_loss, all_val_loss = train_large(predictor, optimizer, loader, val_loader, epoch=20)
 

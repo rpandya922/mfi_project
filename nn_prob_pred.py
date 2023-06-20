@@ -247,15 +247,19 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     all_xr_traj = []
     all_goals_reached = []
     branching_nums = []
+    xh_hists = []
+    xr_hists = []
     goals_reached = np.zeros(goals.shape[1])
     # keep track of initial conditions for branching points
     branching_num = 0
-    init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num) for _ in range(n_traj)] # start from the first initial contition n_traj times
+    xh_init_hist = np.zeros((4, 5))
+    xr_init_hist = np.zeros((4, 5)) # necessary for adding shared history to branching trajectories
+    init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num, xh_init_hist, xr_init_hist) for _ in range(n_traj)] # start from the first initial contition n_traj times
     branching_num += 1
     # fig, ax = plt.subplots()
     while len(init_conds) > 0:
         # set the human and robot's initial states
-        xh, xr, is_branch, h_belief, b_num_curr = init_conds.pop(0)
+        xh, xr, is_branch, h_belief, b_num_curr, xh_hist, xr_hist = init_conds.pop(0)
         human.x = xh
         human.belief.belief = h_belief
         robot.x = xr
@@ -308,7 +312,10 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
 
             # save new initial conditions if we're at a branching point
             if i in branching_times and not is_branch:
-                init_conds = init_conds + [((xh, xr, True, human.belief.belief.copy(), branching_num)) for _ in range(n_traj)]
+                h_belief = human.belief.belief.copy()
+                xh_init_hist = xh_traj[:,i-4:i+1]
+                xr_init_hist = xr_traj[:,i-4:i+1]
+                init_conds = init_conds + [((xh, xr, True, h_belief, branching_num, xh_init_hist, xr_init_hist)) for _ in range(n_traj)]
                 branching_num += 1
 
             # save data
@@ -342,6 +349,8 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
         all_xr_traj.append(xr_traj)
         all_goals_reached.append(h_goal_reached)
         branching_nums.append(b_num_curr)
+        xh_hists.append(xh_hist)
+        xr_hists.append(xr_hist)
 
         # (temporary) plotting
         # ax.cla()
@@ -357,7 +366,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     # plt.show()
     # import ipdb; ipdb.set_trace()
     # 1/0
-    return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals
+    return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals, xh_hists, xr_hists
 
 def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5, branching=True, n_traj=10):
 
@@ -465,7 +474,7 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
         if not branching:
             data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=n_traj)
         else:
-            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=n_traj, branching_times=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=n_traj, branching_times=[20, 40, 60, 80, 100])
         xh_traj.append(data[0])
         xr_traj.append(data[1])
         goals_reached.append(data[2])
@@ -478,8 +487,12 @@ def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl"
     # check if path exists
     if not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
-    with open(path, "wb") as f:
-        pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj}, f)
+    if branching:
+        with open(path, "wb") as f:
+            pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj, "xh_hists": dataset[5], "xr_hists": dataset[6]}, f)
+    else:
+        with open(path, "wb") as f:
+            pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj}, f)
     print(f"saved raw data to {path}")
 
 def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20):
@@ -500,6 +513,7 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
 
     n_traj_total = len(xh_traj)
     for i in tqdm(range(n_traj_total)):
+        # TODO: handle xh_hist and xr_hist
         it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon, branching=branching, n_traj=n_traj)
         input_traj += it
         robot_future += rf
@@ -545,12 +559,10 @@ def plot_model_pred(model_path):
 
     run_trajectory(human, robot, goals, model=model, plot=True)
 
-def save_dataset():
-    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
-    dataset = create_dataset(n_init_cond=800, branching=True, n_traj=10)
-    save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
-    process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
+def save_dataset(raw_data_path="./data/prob_pred/bayes_prob.pkl", processed_data_path="./data/prob_pred/bayes_prob_processed.pkl", n_init_cond=800, branching=True, n_traj=10, history=5, horizon=20):
+    dataset = create_dataset(n_init_cond=n_init_cond, branching=branching, n_traj=n_traj)
+    save_data(dataset, path=raw_data_path, branching=branching, n_traj=n_traj)
+    process_and_save_data(raw_data_path, processed_data_path, history=history, horizon=horizon)
 
 def convert_raw_to_h5(raw_data_path):
     with open(raw_data_path, "rb") as f:
@@ -668,13 +680,17 @@ if __name__ == "__main__":
     # plot_model_pred(model_path)
     # plt.show()
 
-    save_dataset()
+    # save_dataset()
 
-    # raw_data_path = "./data/prob_pred/bayes_prob_val_branching.pkl"
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
+    save_dataset(raw_data_path, processed_data_path, n_init_cond=2, branching=True, n_traj=10, history=5, horizon=20)
+
+    # dataset = create_dataset(n_init_cond=10, branching=True, n_traj=10)
+    # save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
     # convert_raw_to_h5(raw_data_path)
-
-    # raw_data_path = "./data/prob_pred/bayes_prob_val_branching.h5"
-    # processed_data_path = "./data/prob_pred/bayes_prob_val_branching_processed.h5"
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching_baby.h5"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_baby.h5"
     # process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"

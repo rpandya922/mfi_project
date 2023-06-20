@@ -98,7 +98,8 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
                     feat_dim=8,
                     num_layers=num_layers,
                     hidden_size=hidden_size,
-                    droupout_fc=0.0
+                    droupout_fc=0.2,
+                    dropout_rnn=0.2
                     )
 
     rnn_plan_params = RNNParameters(

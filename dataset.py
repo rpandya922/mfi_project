@@ -58,9 +58,25 @@ class SimTrajDataset(Dataset):
     def __len__(self):
         return len(self.input_traj)
 
+def compute_stats(input_traj, robot_future, input_goals):
+    stats = {}
+    stats["input_traj_mean"] = torch.mean(input_traj[:,-1,:], dim=0)
+    stats["input_traj_std"] = torch.std(input_traj[:,-1,:], dim=0)
+    stats["robot_future_mean"] = torch.mean(robot_future[:,-1,:], dim=0)
+    stats["robot_future_std"] = torch.std(robot_future[:,-1,:], dim=0)
+    stats["input_goals_mean"] = torch.mean(input_goals, dim=(0,2))
+    stats["input_goals_std"] = torch.std(input_goals, dim=(0,2))
+
+    # replace any 0 std with 1
+    for key in stats.keys():
+        if key[-4:] == "_std":
+            if torch.sum(stats[key] == 0) > 0:
+                stats[key][stats[key] == 0] = 1
+
+    return stats
+
 class ProbSimTrajDataset(Dataset):
-    # TODO: normalize data
-    def __init__(self, path : str, history : int = 5, horizon : int = 5, mode : str = "train", goal_mode : str = "static"):
+    def __init__(self, path : str, history : int = 5, horizon : int = 5, mode : str = "train", goal_mode : str = "static", stats_file : str = None):
         self.mode = mode
         self.history = history
         self.horizon = horizon
@@ -68,6 +84,7 @@ class ProbSimTrajDataset(Dataset):
         # get file extension
         ext = path.split(".")[-1]
         if ext == "pkl":
+            self.is_h5 = False
             # load pickle file containing processed data
             with open(path, "rb") as f:
                 data = pickle.load(f)
@@ -76,11 +93,34 @@ class ProbSimTrajDataset(Dataset):
             input_goals = data["input_goals"]
             labels = data["labels"]
 
+            # TODO: debug why "./_stats.pkl" file is created
+            # create stats filename
+            if stats_file is None:
+                stats_file = path.split(".")[0] + "_stats.pkl"
+            self.stats_file = stats_file
+
+            if mode == "train":
+                stats = compute_stats(input_traj, robot_future, input_goals)
+                # save stats
+                with open(stats_file, "wb") as f:
+                    pickle.dump(stats, f)
+            
+            # load stats
+            with open(stats_file, "rb") as f:
+                stats = pickle.load(f)
+            # normalize data
+            input_traj = (input_traj - stats["input_traj_mean"]) / stats["input_traj_std"]
+            robot_future = (robot_future - stats["robot_future_mean"]) / stats["robot_future_std"]
+            input_goals = (input_goals.transpose(1,2) - stats["input_goals_mean"]) / stats["input_goals_std"]
+            input_goals = input_goals.transpose(1,2)
+
             self.input_traj = input_traj
             self.robot_future = robot_future
             self.input_goals = input_goals
             self.labels = labels
+            self.length = len(input_traj)
         elif ext == "h5":
+            self.is_h5 = True
             self.path = path
             with h5py.File(path, "r") as f:
                 input_traj = f["input_traj"]
@@ -106,12 +146,13 @@ class ProbSimTrajDataset(Dataset):
         self.labels = data["labels"]
 
     def __getitem__(self, index):
-        # return (self.input_traj[index], self.robot_future[index], self.input_goals[index]), self.labels[index]
+        if not self.is_h5:
+            return (self.input_traj[index], self.robot_future[index], self.input_goals[index]), self.labels[index]
+        
         if not hasattr(self, 'input_traj'):
             self.open_h5()
         idx = (index % self.length) + self.offset
         return (torch.tensor(self.input_traj[idx]).float(), torch.tensor(self.robot_future[idx]).float(), torch.tensor(self.input_goals[idx]).float()), torch.tensor(self.labels[idx]).float()
 
     def __len__(self):
-        # return len(self.input_traj)
         return self.length
