@@ -368,7 +368,59 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     # 1/0
     return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals, xh_hists, xr_hists
 
-def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5, branching=True, n_traj=10):
+def compute_features(xh_hist, xr_hist, xr_future, goals):
+    """
+    features list (for history traj):
+        - distance between human and robot
+        - distance of human to each goal
+        - distance of robot to each goal
+        - angle from human's velocity towards each goal
+        - angle from robot's velocity towards each goal
+    features list (for robot future traj):
+        - distance from robot to each goal
+        - angle from robot's velocity towards each goal
+    """
+    hr_dists = np.linalg.norm(xh_hist[[0,2]] - xr_hist[[0,2]], axis=0, keepdims=True).T
+    h_goal_dists = np.linalg.norm(xh_hist.T[:,:,None] - goals, axis=1)
+    r_goal_dists = np.linalg.norm(xr_hist.T[:,:,None] - goals, axis=1)
+    h_rel = (goals - xh_hist.T[:,:,None])[:,[0,2],:].swapaxes(0,1)
+    h_vel = xh_hist[[1,3]]
+    r_rel = (goals - xr_hist.T[:,:,None])[:,[0,2],:].swapaxes(0,1)
+    r_vel = xr_hist[[1,3]]
+
+    # compute angle between human's velocity and vector to each goal
+    h_rel_unit = h_rel / np.linalg.norm(h_rel, axis=0)
+    # need to handle zero vectors
+    h_vel_norm = np.linalg.norm(h_vel, axis=0)
+    h_vel_norm[h_vel_norm == 0] = 1
+    h_vel_unit = h_vel / h_vel_norm
+    h_angles = np.vstack([np.arccos(np.clip(np.dot(h_vel_unit.T, h_rel_unit[:,:,i]).diagonal(), -1.0, 1.0)) for i in range(goals.shape[1])]).T
+
+    # compute angle between robot's velocity and vector to each goal
+    r_rel_unit = r_rel / np.linalg.norm(r_rel, axis=0)
+    # need to handle zero vectors
+    r_vel_norm = np.linalg.norm(r_vel, axis=0)
+    r_vel_norm[r_vel_norm == 0] = 1
+    r_vel_unit = r_vel / r_vel_norm
+    r_angles = np.vstack([np.arccos(np.clip(np.dot(r_vel_unit.T, r_rel_unit[:,:,i]).diagonal(), -1.0, 1.0)) for i in range(goals.shape[1])]).T
+
+    r_future_dists = np.linalg.norm(xr_future.T[:,:,None] - goals, axis=1)
+    r_future_rel = (goals - xr_future.T[:,:,None])[:,[0,2],:].swapaxes(0,1)
+    r_future_vel = xr_future[[1,3]]
+    r_future_rel_unit = r_future_rel / np.linalg.norm(r_future_rel, axis=0)
+    # need to handle zero vectors
+    r_future_vel_norm = np.linalg.norm(r_future_vel, axis=0)
+    r_future_vel_norm[r_future_vel_norm == 0] = 1
+    r_future_vel_unit = r_future_vel / r_future_vel_norm
+    r_future_angles = np.vstack([np.arccos(np.clip(np.dot(r_future_vel_unit.T, r_future_rel_unit[:,:,i]).diagonal(), -1.0, 1.0)) for i in range(goals.shape[1])]).T
+
+    # concatenate features
+    input_feats = np.hstack((hr_dists, h_goal_dists, r_goal_dists, h_angles, r_angles))
+    future_feats = np.hstack((r_future_dists, r_future_angles))
+
+    return input_feats.T, future_feats.T
+
+def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals, mode="interpolate", history=5, horizon=5, branching=True, n_traj=10, all_xh_hist=None, all_xr_hist=None):
 
     input_traj = []
     robot_future = []
@@ -382,12 +434,18 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
             xh_traj_group = [all_xh_traj[j] for j in traj_group_idxs]
             xr_traj_group = [all_xr_traj[j] for j in traj_group_idxs]
             goals_reached_group = [all_goals_reached[j] for j in traj_group_idxs]
+            if all_xh_hist is not None:
+                xh_hist_group = [all_xh_hist[j] for j in traj_group_idxs]
+                xr_hist_group = [all_xr_hist[j] for j in traj_group_idxs]
+            else:
+                xh_hist_group = None
+                xr_hist_group = None
             goal_probs_group = np.zeros(goal_probs.shape)
             for goal_reached in goals_reached_group:
                 goal_probs_group[goal_reached] += 1
             goal_probs_group /= n_traj
 
-            it, rf, ig, l = create_labels(xh_traj_group, xr_traj_group, goals_reached_group, goal_probs_group, goals, mode=mode, history=history, horizon=horizon, branching=False, n_traj=n_traj)
+            it, rf, ig, l = create_labels(xh_traj_group, xr_traj_group, goals_reached_group, goal_probs_group, goals, mode=mode, history=history, horizon=horizon, branching=False, n_traj=n_traj, all_xh_hist=xh_hist_group, all_xr_hist=xr_hist_group)
             input_traj += it
             robot_future += rf
             input_goals += ig
@@ -412,8 +470,12 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
             xr_future = np.zeros((xr_traj.shape[0], horizon))
             
             if j < history:
-                xh_hist[:,history-(j+1):] = xh_traj[:,0:j+1]
-                xr_hist[:,history-(j+1):] = xr_traj[:,0:j+1]
+                xh_hist[:,history-(j+1):] = xh_traj[:,0:j+1] # from run trajectory
+                if (all_xh_hist is not None) and (j+1 < history):
+                        xh_hist[:,0:history-(j+1)] = all_xh_hist[i][:,-history+(j+1):] # from branching
+                xr_hist[:,history-(j+1):] = xr_traj[:,0:j+1] # from run trajectory
+                if (all_xr_hist is not None) and (j+1 < history):
+                    xr_hist[:,0:history-(j+1)] = all_xr_hist[i][:,-history+(j+1):] # from branching
             else:
                 xh_hist = xh_traj[:,(j+1)-history:j+1]
                 xr_hist = xr_traj[:,(j+1)-history:j+1]
@@ -424,11 +486,12 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
                 xr_future = xr_traj[:,j+1:(j+1)+horizon]
 
             # add data point to dataset
+            input_feats, future_feats = compute_features(xh_hist, xr_hist, xr_future, goals)
             # LSTM expects input of size (sequence length, # features) [batch size dealt with separately]
-            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist)).T).float()) # shape (5,8)
-            robot_future.append(torch.tensor(xr_future.T).float()) # shape (5,4)
-            input_goals.append(torch.tensor(goals).float()) # shape (4,3)
-            labels.append(torch.tensor(goal_prob_label).float()) # shape (3,)
+            input_traj.append(torch.tensor(np.vstack((xh_hist, xr_hist, input_feats)).T).float()) # shape (history,n_features)
+            robot_future.append(torch.tensor(np.vstack((xr_future, future_feats)).T).float()) # shape (horizon,n_future_features)
+            input_goals.append(torch.tensor(goals).float()) # shape (n,#goals)
+            labels.append(torch.tensor(goal_prob_label).float()) # shape (#goals,)
 
             # TODO: decide on the proper label for these data points then add them back
             # add a data point that has xr_future zero'd out and uses initial goal probs as labels
@@ -448,6 +511,8 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
     goals_reached = []
     goal_probs = []
     all_goals = []
+    xh_hist = []
+    xr_hist = []
     for i in tqdm(range(n_init_cond)):
         # generate initial conditions
         ts = 0.05
@@ -480,14 +545,19 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
         goals_reached.append(data[2])
         goal_probs.append(data[3])
         all_goals.append(data[4])
-
-    return xh_traj, xr_traj, goals_reached, goal_probs, all_goals
+        if len(data) > 5:
+            xh_hist.append(data[5])
+            xr_hist.append(data[6])
+    if xh_hist == []:
+        xh_hist = None
+        xr_hist = None
+    return xh_traj, xr_traj, goals_reached, goal_probs, all_goals, xh_hist, xr_hist
 
 def save_data(dataset, path="./data/simulated_interactions_bayes_prob_train.pkl", branching=True, n_traj=10):
     # check if path exists
     if not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
-    if branching:
+    if len(dataset) > 5 and dataset[5] is not None:
         with open(path, "wb") as f:
             pickle.dump({"xh_traj": dataset[0], "xr_traj": dataset[1], "goals_reached": dataset[2], "goal_probs": dataset[3], "goals": dataset[4], "branching": branching, "n_traj": n_traj, "xh_hists": dataset[5], "xr_hists": dataset[6]}, f)
     else:
@@ -505,6 +575,12 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
     goals = raw_data["goals"]
     branching = raw_data["branching"]
     n_traj = raw_data["n_traj"]
+    if "xh_hists" in raw_data:
+        xh_hists = raw_data["xh_hists"]
+        xr_hists = raw_data["xr_hists"]
+    else:
+        xh_hists = None
+        xr_hists = None
 
     input_traj = []
     robot_future = []
@@ -513,8 +589,13 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
 
     n_traj_total = len(xh_traj)
     for i in tqdm(range(n_traj_total)):
-        # TODO: handle xh_hist and xr_hist
-        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon, branching=branching, n_traj=n_traj)
+        if xh_hists is not None:
+            xh_hist_i = xh_hists[i]
+            xr_hist_i = xr_hists[i]
+        else:
+            xh_hist_i = None
+            xr_hist_i = None
+        it, rf, ig, l = create_labels(xh_traj[i], xr_traj[i], goals_reached[i], goal_probs[i], goals[i], history=history, horizon=horizon, branching=branching, n_traj=n_traj, all_xh_hist=xh_hist_i, all_xr_hist=xr_hist_i)
         input_traj += it
         robot_future += rf
         input_goals += ig
@@ -676,16 +757,17 @@ if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
-    model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
-    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    plot_model_pred(model_path)
-    plt.show()
+    # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
+    # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    # plot_model_pred(model_path)
+    # plt.show()
 
     # save_dataset()
 
-    # raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
-    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
     # save_dataset(raw_data_path, processed_data_path, n_init_cond=2, branching=True, n_traj=10, history=5, horizon=20)
+    process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # dataset = create_dataset(n_init_cond=10, branching=True, n_traj=10)
     # save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
