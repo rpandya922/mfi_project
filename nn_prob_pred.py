@@ -675,16 +675,17 @@ def visualize_dataset(raw_data_path):
 if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2)
-    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230615-133340.pt"
-    # # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    # plot_model_pred(model_path)
-    # plt.show()
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
+    model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
+    # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
+    plot_model_pred(model_path)
+    plt.show()
 
     # save_dataset()
 
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
-    save_dataset(raw_data_path, processed_data_path, n_init_cond=2, branching=True, n_traj=10, history=5, horizon=20)
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
+    # save_dataset(raw_data_path, processed_data_path, n_init_cond=2, branching=True, n_traj=10, history=5, horizon=20)
 
     # dataset = create_dataset(n_init_cond=10, branching=True, n_traj=10)
     # save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
