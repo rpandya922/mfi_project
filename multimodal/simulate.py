@@ -6,7 +6,7 @@ import cvxpy as cp
 from scipy.linalg import sqrtm
 
 from dynamics import Unicycle, LTI
-from safety import MMSafety, MMLongTermSafety, SEASafety 
+from safety import MMSafety, MMLongTermSafety, SEASafety, BaselineSafety
 from bayes_inf import BayesEstimator
 
 def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
@@ -300,8 +300,9 @@ def visualize_uncertainty():
     r_dyn = Unicycle(0.1)
     dmin = 1
     # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    # safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     use_ell_bound = False # whether to compute the bounding ellipse
     phis = []
     safety_actives = []
@@ -388,6 +389,7 @@ def visualize_uncertainty():
         # compute safe control
         if type(safe_controller) == MMLongTermSafety:
             ur_ref = lambda xr, xh: r_dyn.compute_goal_control(xr, r_goal)
+        ax.cla()
         ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=control_ax)
 
         # update robot's belief
@@ -437,7 +439,7 @@ def visualize_uncertainty():
         belief_ax.plot(beliefs[:,2], label="P(g2)", c=goal_colors[2])
         belief_ax.legend()
 
-        ax.cla()
+        # ax.cla()
         # compute ellipses for each goal
         k_sigmas = 3 - slacks
         for i, sigma in enumerate(sigmas):

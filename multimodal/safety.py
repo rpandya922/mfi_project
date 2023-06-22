@@ -19,11 +19,13 @@ class MMSafety():
             for j in range(thetas.shape[1]):
                 theta_i = thetas[:,[i]]
                 uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
-                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, theta_i)).item() - gammas[i]*(k - slacks[i])
+                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+                # val1 = (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_i)).item() - gammas[i]*(k - slacks[i])
 
                 theta_j = thetas[:,[j]]
                 uh_j = self.h_dyn.compute_control(xh, Ch.T @ theta_j, Cr @ xr)
-                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, theta_j)).item() - gammas[j]*(k - slacks[j])
+                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, 0)).item() - gammas[j]*(k - slacks[j])
+                # val2 = (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_j)).item() - gammas[j]*(k - slacks[j])
                 diffs[i,j] = val1 - val2
         return np.amax(diffs)
         # try boltzmann operator as continuous approximation of max (may be easier for optimizer)
@@ -113,6 +115,7 @@ class MMSafety():
             L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
             uh_i = self.h_dyn.compute_control(xh, Ch.T @ thetas[:,[i]], Cr @ xr)
             S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+            # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_i)).item() - gammas[i]*(k - slacks[i])
             Ls.append(L)
             Ss.append(S)
             # TODO: compute the tighest constraint and only use that one (they are all parallel constraints)
@@ -153,10 +156,9 @@ class MMSafety():
             ax.set_xlim(-30, 30)
             ax.set_ylim(-30, 30)
 
-        # # compute safe control
+        # objective function
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
-        res = minimize(obj, ur_ref, method="SLSQP", constraints=constraints)
-        constraints_satisfied = [c['fun'](res.x) for c in constraints]
+        # constraints_satisfied = [c['fun'](res.x) for c in constraints]
 
         # check if safe control is necessary (i.e. if safety constraint is active)
         d_dot = (d_p.T @ d_v) / d
@@ -168,6 +170,8 @@ class MMSafety():
         #     phi = max(phi, phi_i)
 
         if phi > 0:
+            # only solve if saefty constraint is active
+            res = minimize(obj, ur_ref, method="SLSQP", constraints=constraints)
             # safety constraint is active
             ret = res.x[:,None], phi, True
         else:
@@ -189,23 +193,6 @@ class BaselineSafety():
         self.lambda_r = lambda_r
         self.k_phi = k_phi
         self.slacks_prev = np.zeros(3)
-
-    def slack_var_helper_(self, xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks):
-        diffs = np.zeros((thetas.shape[1], thetas.shape[1]))
-        for i in range(thetas.shape[1]):
-            for j in range(thetas.shape[1]):
-                theta_i = thetas[:,[i]]
-                uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
-                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, theta_i)).item() - gammas[i]*(k - slacks[i])
-
-                theta_j = thetas[:,[j]]
-                uh_j = self.h_dyn.compute_control(xh, Ch.T @ theta_j, Cr @ xr)
-                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, theta_j)).item() - gammas[j]*(k - slacks[j])
-                diffs[i,j] = val1 - val2
-        return np.amax(diffs)
-        # try boltzmann operator as continuous approximation of max (may be easier for optimizer)
-        # alpha = 1
-        # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
 
     def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
         """
@@ -251,6 +238,70 @@ class BaselineSafety():
         grad_phi_xr += -self.k_phi*((d_v.T @ Cr)/d + (d_p.T @ V)/d - ((d_p.T@d_v) * d_p.T @ Cr)/(d**3))
         
         # sample points from 3-sigma ellipse of each goal
+        xh_all = []
+        for i in range(len(sigmas)):
+            sigma = sigmas[i]
+            uh_i = self.h_dyn.compute_control(xh, Ch.T @ thetas[:,[i]], Cr @ xr)
+            xh_i = self.h_dyn.step_mean(xh, uh_i)
+            # based on math from https://freakonometrics.hypotheses.org/files/2015/11/distribution_workshop.pdf
+            L = np.linalg.cholesky(sigma)
+            x = np.random.normal(0,1,(200,4))
+            z = np.linalg.norm(x, axis=1)
+            z = z.reshape(-1,1).repeat(x.shape[1], axis=1)
+            y = x/z * 3
+            y_new = L @ y.T + xh_i
+            xh_all.append(y_new)
+            # for j in range(200):
+            #     c2 = (y_new[:,[j]] - xh_i).T @ np.linalg.inv(sigma) @ (y_new[:,[j]] - xh_i)
+            #     print(c2) # equals 9 (as desired, these points are of Mahalanobis distance 3 from the mean)
+            # find which y_new maximizes grad_phi_xh @ y_new
+            # ax.scatter(y_new[0,:], y_new[2,:], c="purple", s=1)
+
+        xh_all = np.hstack(xh_all)
+        Lf_phis = grad_phi_xh @ (xh_all - xh)/self.h_dyn.ts
+        idx = np.argmax(Lf_phis)
+        xh_constraint = xh_all[:,[idx]]
+
+        xh_dot = (xh_constraint - xh) / self.h_dyn.ts
+
+        # compute single safety constraint using this point
+        L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
+        S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ xh_dot).item()
+        const = lambda u: S - (L @ u).item()
+        const1 = lambda u: S - L @ u
+        obj = lambda u: np.linalg.norm(u - ur_ref)**2
+
+        # check if safe control is necessary (i.e. if safety constraint is active)        
+        d_dot = (d_p.T @ d_v) / d
+        # phi = self.dmin**2 + self.eta + self.lambda_r - d**2 - self.k_phi*d_dot.item()
+        phi = self.dmin**2 - d**2 - self.k_phi*d_dot.item() # without discrete-time compensation terms
+
+        if plot_controls:
+            # generate meshgrid of controls
+            us = np.linspace(-30, 30, 500)
+            U1, U2 = np.meshgrid(us, us)
+            U = np.vstack((U1.flatten(), U2.flatten()))
+
+            c_satisfied = const1(U) >= 0
+
+            ax.cla()
+            ax.scatter(U[0,c_satisfied], U[1,c_satisfied], c='purple', label='c1 satisfied', alpha=0.1, s=1)
+            ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
+
+            ax.set_xlim(-30, 30)
+            ax.set_ylim(-30, 30)
+
+        if phi >= 0:
+            # safety constraint is active
+            res = minimize(obj, ur_ref, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+            ret = res.x[:,None], phi, True
+        else:
+            # safety constraint is inactive
+            ret = ur_ref, phi, False
+        if return_slacks:
+            ret += (np.zeros(3),)
+
+        return ret
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
@@ -644,7 +695,7 @@ class SEASafety():
         self.lambda_r = lambda_r
         self.k_phi = k_phi
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
         """
         xr: robot state
         xh: human state
@@ -688,17 +739,18 @@ class SEASafety():
         theta = thetas[:,[theta_idx]]
         sigma = sigmas[theta_idx]
         uh = self.h_dyn.compute_control(xh, Ch.T @ theta, Cr @ xr)
-        xh_next = self.h_dyn.step_mean(xh, uh) # robot only has access to mean dynamics
+        # xh_next = self.h_dyn.step_mean(xh, uh)
+        # xh_dot = (xh_next - xh) / self.h_dyn.ts
+        xh_dot = self.h_dyn.mean_dyn(xh, uh, 0)
 
         # computing constraint Lu <= S
         L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
-        lambda_SEA = (3) * np.sqrt(grad_phi_xh_flat @ sigma @ grad_phi_xh_flat.T) + self.lambda_r
-        S = -self.eta - lambda_SEA - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ xh_next).item()
+        lambda_SEA = (3/self.h_dyn.ts) * np.sqrt(grad_phi_xh_flat @ sigma @ grad_phi_xh_flat.T) + self.lambda_r
+        S = -self.eta - lambda_SEA - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ xh_dot).item()
         constraint = {'type': 'ineq', 'fun': lambda u: S - (L @ u).item()}
 
         # compute safe control
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
-        res = minimize(obj, ur_ref, method="SLSQP", constraints=constraint)
 
         # check if safe control is necessary (i.e. if safety constraint is active)
         d_dot = (d_p.T @ d_v) / d
@@ -706,10 +758,16 @@ class SEASafety():
         phi = self.dmin**2 - d**2 - self.k_phi*d_dot.item() # without discrete-time compensation terms
         if phi > 0:
             # safety constraint is active
-            return res.x[:,None], phi, True
+            res = minimize(obj, ur_ref, method="SLSQP", constraints=constraint)
+            ret = res.x[:,None], phi, True
         else:
             # safety constraint is inactive
-            return ur_ref, phi, False
+            ret = ur_ref, phi, False
+
+        if return_slacks:
+            ret += (np.zeros(3),)
+
+        return ret
 
     def __call__(self, *args, **kwds):
         return self.compute_safe_control(*args, **kwds)
