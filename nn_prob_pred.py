@@ -655,6 +655,9 @@ def convert_raw_to_h5(raw_data_path):
     goals = raw_data["goals"]
     branching = raw_data["branching"]
     n_traj = raw_data["n_traj"]
+    if "xh_hists" in raw_data:
+        xh_hists = raw_data["xh_hists"]
+        xr_hists = raw_data["xr_hists"]
 
     # save in h5 file
     h5_path = raw_data_path.replace(".pkl", ".h5")
@@ -668,6 +671,7 @@ def convert_raw_to_h5(raw_data_path):
             init_grp.create_dataset("goal_probs", data=goal_probs[i])
             init_grp.create_dataset("goals", data=goals[i])
             init_grp.attrs["n_traj_init"] = len(xh_traj[i])
+            import ipdb; ipdb.set_trace()
             for j in range(len(xh_traj[i])):
                 init_grp.create_dataset(f"xh_traj_{j}", data=xh_traj[i][j])
                 init_grp.create_dataset(f"xr_traj_{j}", data=xr_traj[i][j])
@@ -764,17 +768,17 @@ if __name__ == "__main__":
 
     # save_dataset()
 
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_tmp.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_tmp.pkl"
-    # save_dataset(raw_data_path, processed_data_path, n_init_cond=2, branching=True, n_traj=10, history=5, horizon=20)
-    process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.pkl"
+    # save_dataset(raw_data_path, processed_data_path, n_init_cond=400, branching=True, n_traj=10, history=5, horizon=20)
+    # process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # dataset = create_dataset(n_init_cond=10, branching=True, n_traj=10)
     # save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
-    # convert_raw_to_h5(raw_data_path)
-    # raw_data_path = "./data/prob_pred/bayes_prob_branching_baby.h5"
-    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_baby.h5"
-    # process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
+    convert_raw_to_h5(raw_data_path)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
+    process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
     # visualize_dataset(raw_data_path)
