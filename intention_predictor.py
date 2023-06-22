@@ -87,7 +87,7 @@ class IntentionPredictor(nn.Module):
 
         return self.classifier(c_in)
 
-def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True, hidden_size = 128, num_layers = 2, use_h_pred = False):
+def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = True, hidden_size = 128, num_layers = 2, use_h_pred = False, hist_feats : int = 8, plan_feats : int = 4):
     # TODO: figure out where this should be stored
     seq_len = 5
     state_dim = 4
@@ -95,7 +95,7 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
 
     # create RNNParameters object
     rnn_hist_params = RNNParameters(
-                    feat_dim=8,
+                    feat_dim=hist_feats,
                     num_layers=num_layers,
                     hidden_size=hidden_size,
                     droupout_fc=0.2,
@@ -103,7 +103,7 @@ def create_model(horizon_len=5, goal_mode : str = "static", use_plan : bool = Tr
                     )
 
     rnn_plan_params = RNNParameters(
-                    feat_dim=4,
+                    feat_dim=plan_feats,
                     num_layers=num_layers,
                     hidden_size=hidden_size,
                     droupout_fc=0.0

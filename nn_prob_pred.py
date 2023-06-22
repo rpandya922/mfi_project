@@ -645,6 +645,12 @@ def save_dataset(raw_data_path="./data/prob_pred/bayes_prob.pkl", processed_data
     save_data(dataset, path=raw_data_path, branching=branching, n_traj=n_traj)
     process_and_save_data(raw_data_path, processed_data_path, history=history, horizon=horizon)
 
+def save_dataset_h5(raw_data_path, processed_h5_path, n_init_cond=800, branching=True, n_traj=10, history=5, horizon=20):
+    dataset = create_dataset(n_init_cond=n_init_cond, branching=branching, n_traj=n_traj)
+    save_data(dataset, path=raw_data_path, branching=branching, n_traj=n_traj)
+    convert_raw_to_h5(raw_data_path)
+    process_and_save_h5(raw_data_path.replace(".pkl", ".h5"), processed_h5_path, history=history, horizon=horizon)
+
 def convert_raw_to_h5(raw_data_path):
     with open(raw_data_path, "rb") as f:
         raw_data = pickle.load(f)
@@ -658,6 +664,9 @@ def convert_raw_to_h5(raw_data_path):
     if "xh_hists" in raw_data:
         xh_hists = raw_data["xh_hists"]
         xr_hists = raw_data["xr_hists"]
+    else:
+        xh_hists = None
+        xr_hists = None
 
     # save in h5 file
     h5_path = raw_data_path.replace(".pkl", ".h5")
@@ -671,10 +680,12 @@ def convert_raw_to_h5(raw_data_path):
             init_grp.create_dataset("goal_probs", data=goal_probs[i])
             init_grp.create_dataset("goals", data=goals[i])
             init_grp.attrs["n_traj_init"] = len(xh_traj[i])
-            import ipdb; ipdb.set_trace()
             for j in range(len(xh_traj[i])):
                 init_grp.create_dataset(f"xh_traj_{j}", data=xh_traj[i][j])
                 init_grp.create_dataset(f"xr_traj_{j}", data=xr_traj[i][j])
+                if xh_hists is not None:
+                    init_grp.create_dataset(f"xh_hist_{j}", data=xh_hists[i][j])
+                    init_grp.create_dataset(f"xr_hist_{j}", data=xr_hists[i][j])
     print(f"converted to h5 file {h5_path}")
 
 def process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20):
@@ -690,11 +701,17 @@ def process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=2
             n_traj_init = grp.attrs["n_traj_init"]
             xh_traj = [grp[f"xh_traj_{j}"] for j in range(n_traj_init)]
             xr_traj = [grp[f"xr_traj_{j}"] for j in range(n_traj_init)]
+            if f"xh_hist_{0}" in grp:
+                xh_hist = [grp[f"xh_hist_{j}"] for j in range(n_traj_init)]
+                xr_hist = [grp[f"xr_hist_{j}"] for j in range(n_traj_init)]
+            else:
+                xh_hist = None
+                xr_hist = None
             goals_reached = grp["goals_reached"][:]
             goal_probs = grp["goal_probs"][:]
             goals = grp["goals"][:]
 
-            it, rf, ig, l = create_labels(xh_traj, xr_traj, goals_reached, goal_probs, goals, history=history, horizon=horizon, branching=branching, n_traj=n_traj)
+            it, rf, ig, l = create_labels(xh_traj, xr_traj, goals_reached, goal_probs, goals, history=history, horizon=horizon, branching=branching, n_traj=n_traj, all_xh_hist=xh_hist, all_xr_hist=xr_hist)
             it = torch.stack(it)
             rf = torch.stack(rf)
             ig = torch.stack(ig)
@@ -768,17 +785,22 @@ if __name__ == "__main__":
 
     # save_dataset()
 
-    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.pkl"
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.pkl"
     # save_dataset(raw_data_path, processed_data_path, n_init_cond=400, branching=True, n_traj=10, history=5, horizon=20)
     # process_and_save_data(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # dataset = create_dataset(n_init_cond=10, branching=True, n_traj=10)
     # save_data(dataset, path=raw_data_path, branching=True, n_traj=10)
-    convert_raw_to_h5(raw_data_path)
-    raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
-    process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
+    # convert_raw_to_h5(raw_data_path)
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
+    # process_and_save_h5(raw_data_path, processed_data_path, history=5, horizon=20)
 
     # raw_data_path = "./data/prob_pred/bayes_prob_branching.h5"
     # visualize_dataset(raw_data_path)
+
+    # save new data and convert to h5 with featurization
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
+    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=400, branching=True, n_traj=15, history=5, horizon=20)

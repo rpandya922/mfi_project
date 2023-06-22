@@ -85,9 +85,7 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
 
     loss = nn.CrossEntropyLoss(reduction="mean").to(device)
 
-    running_loss = 0.0
     for ep in tqdm(range(epoch)):
-
         # test on validation
         if ep % 4 == 0:
             model.eval()
@@ -108,6 +106,7 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
 
         model.train()
         total_loss = 0
+        running_loss = 0.0
         for batch_idx, (data, target) in enumerate(trainset_loader):
             # send data to device
             data = [d.to(device) for d in data]
@@ -127,7 +126,7 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
             optimizer.step()
 
             running_loss += output.item()
-            if batch_idx % 1000 == 999:
+            if (batch_idx % 1000 == 0) and (batch_idx > 0):
                 writer.add_scalar("Loss/running train", running_loss / 1000, ep*len(trainset_loader) + batch_idx)
                 running_loss = 0.0
         all_train_loss.append(total_loss / (batch_idx+1))
@@ -250,18 +249,20 @@ def train_prob_sim(save_model=True):
     num_layers = 2
     
     # load datasets
-    train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
+    # train_path = "./data/prob_pred/bayes_prob_branching_processed.pkl"
     # train_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    train_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
     dataset = ProbSimTrajDataset(path=train_path, mode="train")
     loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=6)
 
     # validation data
-    val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
+    # val_path = "./data/prob_pred/bayes_prob_branching_val_processed.pkl"
     # val_path = "./data/prob_pred/bayes_prob_branching_processed.h5"
+    val_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats.h5"
     val_dataset = ProbSimTrajDataset(path=val_path, mode="val", stats_file=dataset.stats_file)
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=6)
 
-    predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers)
+    predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers, hist_feats=21, plan_feats=10)
     predictor = predictor.to(device)
     optimizer = torch.optim.AdamW(predictor.parameters(), lr=4e-3, weight_decay=1e-2)
     # all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
