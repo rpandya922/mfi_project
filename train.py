@@ -102,7 +102,8 @@ def train_large(model, optimizer, trainset_loader, valset_loader, epoch=10):
             writer.add_scalar("Loss/val", all_val_loss[-1], ep)
 
             # save model
-            torch.save(model.state_dict(), os.path.join(checkpoint_dir, f"model_{ep}.pt"))
+            if ep > 0:
+                torch.save(model.state_dict(), os.path.join(checkpoint_dir, f"model_{ep}.pt"))
 
         model.train()
         total_loss = 0
@@ -264,7 +265,8 @@ def train_prob_sim(save_model=True):
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers, hist_feats=21, plan_feats=10)
     predictor = predictor.to(device)
-    optimizer = torch.optim.AdamW(predictor.parameters(), lr=4e-3, weight_decay=1e-2)
+    # optimizer = torch.optim.AdamW(predictor.parameters(), lr=4e-3, weight_decay=1e-1)
+    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
     # all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
     all_train_loss, all_val_loss = train_large(predictor, optimizer, loader, val_loader, epoch=20)
 
