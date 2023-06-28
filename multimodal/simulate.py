@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -300,9 +301,9 @@ def visualize_uncertainty():
     r_dyn = Unicycle(0.1)
     dmin = 1
     # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    # safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     use_ell_bound = False # whether to compute the bounding ellipse
     phis = []
     safety_actives = []
@@ -475,10 +476,15 @@ def visualize_uncertainty():
         ax.add_artist(circle)
         ax.set_xlim(-10, 10)
         ax.set_ylim(-10, 10)
-        plt.pause(0.01)
 
+        plt.pause(0.01)
         # save figures for video
-        # plt.savefig(f"./data/uncertainty/{idx:03d}.png", dpi=300)
+        # img_path = f"./data/baseline_ctl/"
+        # if not os.path.exists(img_path):
+        #     os.makedirs(img_path)
+        # img_path += f"/{idx:03d}.png"
+        # plt.savefig(img_path, dpi=300)
+
     plt.show()
 
 if __name__ == "__main__":

@@ -19,12 +19,12 @@ class MMSafety():
             for j in range(thetas.shape[1]):
                 theta_i = thetas[:,[i]]
                 uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
-                val1 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+                val1 = -(grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
                 # val1 = (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_i)).item() - gammas[i]*(k - slacks[i])
 
                 theta_j = thetas[:,[j]]
                 uh_j = self.h_dyn.compute_control(xh, Ch.T @ theta_j, Cr @ xr)
-                val2 = (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, 0)).item() - gammas[j]*(k - slacks[j])
+                val2 = -(grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_j, 0)).item() - gammas[j]*(k - slacks[j])
                 # val2 = (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_j)).item() - gammas[j]*(k - slacks[j])
                 diffs[i,j] = val1 - val2
         return np.amax(diffs)
@@ -96,6 +96,7 @@ class MMSafety():
         constraints = [{'type': 'ineq', 'fun': const}, {'type': 'ineq', 'fun': const_lb}]
         res = minimize(obj, self.slacks_prev, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
         res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+
         # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
         # lb = 0
         # ub = np.inf
@@ -103,6 +104,9 @@ class MMSafety():
         slacks = res.x
         self.slacks_prev = slacks
         
+        diffs = self.slack_var_helper2_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks)
+        # print(diffs)
+
         # if time > 0:
         #     import ipdb; ipdb.set_trace()
 
@@ -115,11 +119,18 @@ class MMSafety():
             L = (grad_phi_xr @ self.r_dyn.g(xr)).flatten()
             uh_i = self.h_dyn.compute_control(xh, Ch.T @ thetas[:,[i]], Cr @ xr)
             S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
+            # use slack=0 as baseline
+            # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k)
+            # S = -self.eta - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0)).item() - gammas[i]*(k - slacks[i])
             # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_i)).item() - gammas[i]*(k - slacks[i])
             Ls.append(L)
             Ss.append(S)
             # TODO: compute the tighest constraint and only use that one (they are all parallel constraints)
             # constraints.append({'type': 'ineq', 'fun': lambda u: S - (L @ u).item()})
+
+        #     print(f"S[{i}]: {S}")
+        #     print((grad_phi_xr @ self.r_dyn.f(xr)).item())
+        # print()
         
         # compute constraints
         # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
