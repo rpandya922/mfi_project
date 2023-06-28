@@ -7,7 +7,7 @@ import cvxpy as cp
 from scipy.linalg import sqrtm
 
 from dynamics import Unicycle, LTI
-from safety import MMSafety, MMLongTermSafety, SEASafety, BaselineSafety
+from safety import MMSafety, MMLongTermSafety, SEASafety, BaselineSafety, BaselineSafetySamples
 from bayes_inf import BayesEstimator
 
 def overlay_timesteps(ax, xh_traj, xr_traj, goals=None, n_steps=100, h_cmap="Blues", r_cmap="Reds", linewidth=2):
@@ -303,16 +303,19 @@ def visualize_uncertainty():
     # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    # safe_controller = BaselineSafetySamples(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     use_ell_bound = False # whether to compute the bounding ellipse
     phis = []
     safety_actives = []
     distances = []
     all_slacks = np.zeros((0, 3))
+    change_h_goal = False
 
     # randomly initialize 3 goals
     goals = np.random.uniform(-10, 10, (2, 3))
-    h_goal = goals[:,[0]]
+    h_goal_idx = 0
+    h_goal = goals[:,[h_goal_idx]]
     r_goal = goals[:,0]
 
     # initial positions
@@ -402,6 +405,12 @@ def visualize_uncertainty():
         xh0 = h_dyn.step(xh0, uh)
         xr0 = r_dyn.step(xr0, ur_safe)
         # xr0 = r_dyn.step(xr0, ur_ref)
+
+        # change human's goal if applicable
+        goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
+        if change_h_goal and goal_dist < 0.1:
+            h_goal_idx = (h_goal_idx + 1) % goals.shape[1]
+            h_goal = goals[:,[h_goal_idx]]
 
         # save data
         xh_traj = np.hstack((xh_traj, xh0))
