@@ -12,7 +12,7 @@ from tqdm import tqdm
 from intention_predictor import create_model, IntentionPredictor
 from dataset import SimTrajDataset, ProbSimTrajDataset
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
 print(f"Training with device {device}")
 
@@ -265,8 +265,13 @@ def train_prob_sim(save_model=True):
 
     predictor = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers, hist_feats=21, plan_feats=10)
     predictor = predictor.to(device)
-    # optimizer = torch.optim.AdamW(predictor.parameters(), lr=4e-3, weight_decay=1e-1)
-    optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
+    model_parameters = filter(lambda p: p.requires_grad, predictor.parameters())
+    params = sum([np.prod(p.size()) for p in model_parameters])
+    print(f"Number of trainable parameters: {params}")
+    print(f"Number of training samples: {len(dataset)}")
+
+    optimizer = torch.optim.AdamW(predictor.parameters(), lr=1e-2, weight_decay=1e-2)
+    # optimizer = torch.optim.Adam(predictor.parameters(), lr=4e-3)
     # all_train_loss, all_val_loss = train(predictor, optimizer, loader, val_loader, epoch=80)
     all_train_loss, all_val_loss = train_large(predictor, optimizer, loader, val_loader, epoch=20)
 
