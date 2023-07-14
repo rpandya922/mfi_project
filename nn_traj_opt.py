@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.autograd.functional import jacobian
+from torch.autograd.functional import jacobian, hessian
 import cyipopt as ipopt
 import pickle
 
@@ -8,8 +8,6 @@ from dynamics import DIDynamics
 from intention_predictor import create_model
 from bayes_inf import BayesEstimator, BayesHuman
 from robot import Robot
-from nn_prob_pred import compute_features
-from intention_utils import process_model_input
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -87,6 +85,8 @@ class TrajOptProb(object):
         self.hist_feats = hist_feats
         self.plan_feats = plan_feats
         self.r_dyn = r_dyn
+        self.A = torch.tensor(r_dyn.A).float()
+        self.B = torch.tensor(r_dyn.B).float()
 
         self.n_state = self.horizon*self.n
         self.n_ctrl = self.horizon*self.m
@@ -105,14 +105,13 @@ class TrajOptProb(object):
         self.goals = torch.tensor(goals).float()
         self.xh_hist = torch.tensor(xh_hist).float()
         self.xr_hist = torch.tensor(xr_hist).float()
+        self.xr_prev = torch.tensor(xr_hist[:,[-1]]).float() # used in constraint computation
 
     def _process_input(self, x):
-        # NOTE: x should already be torch tensor (to make gradient computation easy)
+        # x should already be torch tensor (to make gradient computation easy)
         # first, split into states and controls
         xr_plan = x[:self.n_state].reshape((self.n, self.horizon))
-        # ur_plan = x[self.n_state:].reshape((self.m, self.horizon))
 
-        # TODO: do all the processing operations in pytorch instead of numpy
         # compute NN inputs
         hist_feats, future_feats = compute_features_torch(self.xh_hist, self.xr_hist, xr_plan, self.goals)
         input_hist, input_future, input_goals = process_model_input_torch(self.xh_hist, self.xr_hist, xr_plan.T, self.goals)
@@ -148,6 +147,67 @@ class TrajOptProb(object):
         obj_val.backward()
 
         return x_.grad.detach().numpy()
+    
+    def _const_helper(self, x):
+        xr_plan = x[:self.n_state].reshape((self.n, self.horizon))
+        ur_plan = x[self.n_state:].reshape((self.m, self.horizon))
+        xr_plan_prev = torch.hstack((self.xr_prev, xr_plan[:,:-1]))
+        dyn_step = self.A @ xr_plan_prev + self.B @ ur_plan
+        dyn_const = torch.norm(xr_plan - dyn_step, dim=0)
+
+        # control constraints
+        u_const = x[self.n_state:]
+
+        return torch.cat((dyn_const, u_const))
+
+    def constraints(self, x):
+        x_ = torch.tensor(x).float()
+        const = self._const_helper(x_)
+        return const.detach().numpy()
+    
+    def jacobianstructure(self):
+        rows = np.array([ 0,  0,  1,  1,  1,  1,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,
+                          7,  7,  7,  7,  9,  9,  9,  9, 10, 10, 10, 10, 12, 12, 12, 12, 13, 13,
+                          13, 13, 16, 16, 16, 16, 16, 16, 16, 16, 19, 19, 19, 19, 20, 21, 22, 23,
+                          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+                          42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
+        cols = np.array([ 0,  80,  40,  41,  60, 101,   2,   3,  22,  83,   3,   4,  23,  84,
+                          44,  45,  64, 105,   6,   7,  26,  87,  48,  49,  68, 109,   9,  10,
+                          29,  90,  51,  52,  71, 112,  12,  13,  32,  93,  15,  16,  35,  55,
+                          56,  75,  96, 116,  18,  19,  38,  99,  80,  81,  82,  83,  84,  85,
+                          86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,
+                          100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
+                          114, 115, 116, 117, 118, 119])
+        return (rows, cols)
+
+    def jacobian(self, x):
+        # the constraint jacobian
+        # TODO: manually construct sparse jacobian
+        x_ = torch.tensor(x).float()
+        const_fn = lambda x: self._const_helper(x)
+        jac = jacobian(const_fn, x_)
+
+        return jac.detach().numpy()[self.jacobianstructure()]
+        # return jac.detach().numpy().flatten()
+
+    # TODO: at least remove hessian dependence on ur_plan (it's always zero)
+    # def hessianstructure(self):
+    #     pass
+
+    def hessian(self, x, lagrange, obj_factor):
+        # objective hessian
+        x_ = torch.tensor(x).float()
+        obj_fn = lambda x: self._obj_helper(*self._process_input(x))
+        obj_hess = hessian(obj_fn, x_).detach().numpy()
+
+        # constraint hessian
+        # TODO: manually construct sparse constraint hessian
+        const_fn = lambda x: self._const_helper(x)
+        const_jac = lambda x: jacobian(const_fn, x)
+        const_hess = jacobian(const_jac, x_).detach().numpy()
+
+        hess = obj_factor*obj_hess + np.tensordot(lagrange, const_hess, axes=([0],[0]))
+        return hess.flatten()
 
 if __name__ == "__main__":
     horizon = 20
@@ -228,4 +288,19 @@ if __name__ == "__main__":
 
     val = obj.objective(x0)
     grad = obj.gradient(x0)
+    const = obj.constraints(x0)
+    jac = obj.jacobian(x0)
+    hess = obj.hessian(x0, np.ones(const.shape[0]), 1.0)
+    cl = np.hstack((np.zeros((n_state,)), -np.ones((n_ctrl,))))
+    cu = np.hstack((np.zeros((n_state,)), np.ones((n_ctrl,))))
+    nlp = ipopt.Problem(
+            n=len(x0),
+            m=len(cl),
+            problem_obj=obj,
+            cl=cl,
+            cu=cu
+            )
+    nlp.addOption('mu_strategy', 'adaptive')
+    # TODO:  currently throws "EXIT: Invalid number in NLP function or derivative detected."
+    x, info = nlp.solve(x0)
     import ipdb; ipdb.set_trace()
