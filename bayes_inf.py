@@ -106,7 +106,7 @@ class BayesHuman(Human):
             self.goal = self.goals[:,[g_idx]]
         elif np.linalg.norm(r_goal - self.goal) <= 1e-3:
             # choose a new goal by selecting the closest goal that isn't the same as the robot's
-            dists = np.linalg.norm(self.goals - r_goal, axis=0)
+            dists = np.linalg.norm(self.goals - self.x, axis=0)
             dists[np.argmax(self.belief.belief)] = np.inf
             g_idx = np.argmin(dists)
             
