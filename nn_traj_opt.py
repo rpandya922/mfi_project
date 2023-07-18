@@ -131,8 +131,10 @@ class TrajOptProb(object):
         probs = softmax(model_out)
         
         P = probs.flatten()
-        Q = torch.ones(3) / 3
-        return (P * (P / Q).log()).sum() # kl divergence
+        # Q = torch.ones(3) / 3
+        # return (P * (P / Q).log()).sum() # kl divergence
+        return -P[1] # probability of first goal
+        # return 0*P[0]
 
     def objective(self, x):
         x = torch.tensor(x).float()
@@ -155,30 +157,28 @@ class TrajOptProb(object):
         dyn_step = self.A @ xr_plan_prev + self.B @ ur_plan
         dyn_const = torch.norm(xr_plan - dyn_step, dim=0)
 
-        # control constraints
-        u_const = x[self.n_state:]
-
-        return torch.cat((dyn_const, u_const))
+        return dyn_const
 
     def constraints(self, x):
         x_ = torch.tensor(x).float()
         const = self._const_helper(x_)
         return const.detach().numpy()
     
-    def jacobianstructure(self):
-        rows = np.array([ 0,  0,  1,  1,  1,  1,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,
-                          7,  7,  7,  7,  9,  9,  9,  9, 10, 10, 10, 10, 12, 12, 12, 12, 13, 13,
-                          13, 13, 16, 16, 16, 16, 16, 16, 16, 16, 19, 19, 19, 19, 20, 21, 22, 23,
-                          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-                          42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
-        cols = np.array([ 0,  80,  40,  41,  60, 101,   2,   3,  22,  83,   3,   4,  23,  84,
-                          44,  45,  64, 105,   6,   7,  26,  87,  48,  49,  68, 109,   9,  10,
-                          29,  90,  51,  52,  71, 112,  12,  13,  32,  93,  15,  16,  35,  55,
-                          56,  75,  96, 116,  18,  19,  38,  99,  80,  81,  82,  83,  84,  85,
-                          86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,
-                          100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
-                          114, 115, 116, 117, 118, 119])
-        return (rows, cols)
+    # for old jacobian (constraints included control constraint, now moved to bounds on x)
+    # def jacobianstructure(self):
+    #     rows = np.array([ 0,  0,  1,  1,  1,  1,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,
+    #                       7,  7,  7,  7,  9,  9,  9,  9, 10, 10, 10, 10, 12, 12, 12, 12, 13, 13,
+    #                       13, 13, 16, 16, 16, 16, 16, 16, 16, 16, 19, 19, 19, 19, 20, 21, 22, 23,
+    #                       24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+    #                       42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
+    #     cols = np.array([ 0,  80,  40,  41,  60, 101,   2,   3,  22,  83,   3,   4,  23,  84,
+    #                       44,  45,  64, 105,   6,   7,  26,  87,  48,  49,  68, 109,   9,  10,
+    #                       29,  90,  51,  52,  71, 112,  12,  13,  32,  93,  15,  16,  35,  55,
+    #                       56,  75,  96, 116,  18,  19,  38,  99,  80,  81,  82,  83,  84,  85,
+    #                       86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,
+    #                       100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
+    #                       114, 115, 116, 117, 118, 119])
+    #     return (rows, cols)
 
     def jacobian(self, x):
         # the constraint jacobian
@@ -187,27 +187,28 @@ class TrajOptProb(object):
         const_fn = lambda x: self._const_helper(x)
         jac = jacobian(const_fn, x_)
 
-        return jac.detach().numpy()[self.jacobianstructure()]
-        # return jac.detach().numpy().flatten()
+        # return jac.detach().numpy()[self.jacobianstructure()]
+        return jac.detach().numpy().flatten()
 
     # TODO: at least remove hessian dependence on ur_plan (it's always zero)
     # def hessianstructure(self):
     #     pass
 
-    def hessian(self, x, lagrange, obj_factor):
-        # objective hessian
-        x_ = torch.tensor(x).float()
-        obj_fn = lambda x: self._obj_helper(*self._process_input(x))
-        obj_hess = hessian(obj_fn, x_).detach().numpy()
+    # NOTE: much faster to use IPOPT's AD to compute hessian
+    # def hessian(self, x, lagrange, obj_factor):
+    #     # objective hessian
+    #     x_ = torch.tensor(x).float()
+    #     obj_fn = lambda x: self._obj_helper(*self._process_input(x))
+    #     obj_hess = hessian(obj_fn, x_).detach().numpy()
 
-        # constraint hessian
-        # TODO: manually construct sparse constraint hessian
-        const_fn = lambda x: self._const_helper(x)
-        const_jac = lambda x: jacobian(const_fn, x)
-        const_hess = jacobian(const_jac, x_).detach().numpy()
+    #     # constraint hessian
+    #     # TODO: manually construct sparse constraint hessian
+    #     const_fn = lambda x: self._const_helper(x)
+    #     const_jac = lambda x: jacobian(const_fn, x)
+    #     const_hess = jacobian(const_jac, x_).detach().numpy()
 
-        hess = obj_factor*obj_hess + np.tensordot(lagrange, const_hess, axes=([0],[0]))
-        return hess.flatten()
+    #     hess = obj_factor*obj_hess + np.tensordot(lagrange, const_hess, axes=([0],[0]))
+    #     return hess.flatten()
 
 if __name__ == "__main__":
     horizon = 20
@@ -276,12 +277,14 @@ if __name__ == "__main__":
     n_ctrl = k_plan*2
     # construct xr_plan by inputting 0 control for k_plan timesteps
     xr_plan = np.zeros((4, k_plan))
+    ur_plan = np.zeros((2, k_plan))
     xr_sim = robot.x
     for i in range(k_plan):
-        u = np.zeros((2,1))
+        # u = np.zeros((2,1))
+        u = robot.dynamics.get_goal_control(xr_sim, robot.goal)
         xr_sim = robot.dynamics.step(xr_sim, u)
         xr_plan[:,i] = xr_sim.flatten()
-    ur_plan = np.zeros((2, k_plan))
+        ur_plan[:,i] = u.flatten()
 
     # construct initial guess
     x0 = np.hstack((xr_plan.flatten(), ur_plan.flatten()))
@@ -290,17 +293,25 @@ if __name__ == "__main__":
     grad = obj.gradient(x0)
     const = obj.constraints(x0)
     jac = obj.jacobian(x0)
-    hess = obj.hessian(x0, np.ones(const.shape[0]), 1.0)
-    cl = np.hstack((np.zeros((n_state,)), -np.ones((n_ctrl,))))
-    cu = np.hstack((np.zeros((n_state,)), np.ones((n_ctrl,))))
+    # hess = obj.hessian(x0, np.ones(const.shape[0]), 1.0)
+    cl = np.zeros((k_plan,))
+    cu = np.zeros((k_plan,))
+    lb = np.hstack((np.tile(-np.inf, n_state), -10*np.ones(n_ctrl)))
+    ub = np.hstack((np.tile(np.inf, n_state), 10*np.ones(n_ctrl)))
     nlp = ipopt.Problem(
             n=len(x0),
             m=len(cl),
             problem_obj=obj,
             cl=cl,
-            cu=cu
+            cu=cu,
+            lb=lb,
+            ub=ub
             )
-    nlp.addOption('mu_strategy', 'adaptive')
-    # TODO:  currently throws "EXIT: Invalid number in NLP function or derivative detected."
+    # nlp.addOption('mu_strategy', 'adaptive')
+    # nlp.addOption('tol', 1e-5)
+    # nlp.addOption('constr_viol_tol', 1e-4)
+    nlp.addOption('max_iter', 1000)
+    # NOTE: runs but does not converge
+    # converges with objective fn = 0, but takes ~180 iterations even though initial guess is feasible (?)
     x, info = nlp.solve(x0)
     import ipdb; ipdb.set_trace()

@@ -193,6 +193,7 @@ class ProbSimTrajDataset(Dataset):
         idx = index
 
         # normalize data point
+        # TODO: convert means and SDs to torch tensors for speed
         input_traj = (self.input_traj[idx] - self.stats["input_traj_mean"]) / self.stats["input_traj_std"]
         robot_future = (self.robot_future[idx] - self.stats["robot_future_mean"]) / self.stats["robot_future_std"]
         input_goals = (self.input_goals[idx].T - self.stats["input_goals_mean"]) / self.stats["input_goals_std"]
