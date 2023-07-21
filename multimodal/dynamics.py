@@ -52,7 +52,9 @@ class Unicycle():
         goal: [x, y]
         """
         v_dot = -((x[0] - goal[0])*np.cos(x[3]) + (x[1] - goal[1])*np.sin(x[3])) - (self.kv * x[2])
-        psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0]) - x[3]))
+        # psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0]) - x[3]))
+        # TODO: is the following the correct control?
+        psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0])) - x[3])
 
         return np.array([v_dot, psi_dot])
 

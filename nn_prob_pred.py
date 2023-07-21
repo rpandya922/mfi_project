@@ -178,11 +178,11 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
         if robot_obs is not None:
             ur += robot.dynamics.get_robot_control(robot.x, robot_obs)
         # robot should stay still for 5 timesteps
-        if i < 5:
-            ur = np.zeros(ur.shape)
+        # if i < 5:
+        #     ur = np.zeros(ur.shape)
 
         # update human belief (if applicable)
-        if type(human) == BayesHuman and i >= 5:
+        if type(human) == BayesHuman:# and i >= 5:
             human.update_belief(robot.x, ur)
 
         # compute new states
@@ -805,7 +805,7 @@ def visualize_dataset(raw_data_path):
 if __name__ == "__main__":
     # # save_dataset()
     np.random.seed(2) # normal test seed
-    # np.random.seed(7)
+    # np.random.seed(1)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"

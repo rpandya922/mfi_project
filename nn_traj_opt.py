@@ -133,8 +133,8 @@ class TrajOptProb(object):
         P = probs.flatten()
         # Q = torch.ones(3) / 3
         # return (P * (P / Q).log()).sum() # kl divergence
-        return -P[1] # probability of first goal
-        # return 0*P[0]
+        # return -P[1] # probability of first goal
+        return 0*P[0]
 
     def objective(self, x):
         x = torch.tensor(x).float()
@@ -309,9 +309,9 @@ if __name__ == "__main__":
             )
     # nlp.addOption('mu_strategy', 'adaptive')
     # nlp.addOption('tol', 1e-5)
-    # nlp.addOption('constr_viol_tol', 1e-4)
+    nlp.addOption('constr_viol_tol', 1e-4)
     nlp.addOption('max_iter', 1000)
     # NOTE: runs but does not converge
     # converges with objective fn = 0, but takes ~180 iterations even though initial guess is feasible (?)
     x, info = nlp.solve(x0)
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()

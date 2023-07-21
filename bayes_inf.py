@@ -21,17 +21,19 @@ class BayesEstimator():
         self.belief = prior
 
         # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
-        n_actions = 8
+        n_actions = 16
         angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
         all_actions = []
-        for r in range(1, 2):
+        # for r in range(1, 6):
+        # for r in [2, 4, 8, 16, 32, 64]:
+        for r in [1]:
             actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
             all_actions.append(actions)
         # TODO: find the right way to handle adding the 0 action
         # all_actions.append(np.array([0, 0]).T)
         self.actions = np.vstack(all_actions)
         
-        # self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
+        # self.actions = np.mgrid[-1:1:21j, -1:1:21j].reshape(2,-1).T
 
     def project_action(self, action):
         # passed-in action will be a column vector
