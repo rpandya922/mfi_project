@@ -883,7 +883,6 @@ class SEASafety():
         grad_phi_xr = np.zeros((1,4))
         grad_phi_xr += -2*(d_p.T @ Cr)
         grad_phi_xr += -self.k_phi*((d_v.T @ Cr)/d + (d_p.T @ V)/d - ((d_p.T@d_v) * d_p.T @ Cr)/(d**3))
-
         
         theta_idx = np.argmax(belief)
         theta = thetas[:,[theta_idx]]
