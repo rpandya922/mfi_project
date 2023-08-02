@@ -105,35 +105,6 @@ class CBPEstimator():
         else:
             return new_belief, likelihoods
 
-    def update_belief_old(self, state, action, r_state, return_likelihood=False):
-        # project chosen action to discrete set
-        _, a_idx = self.project_action(action)
-
-        # robot should only have access to mean/non-noisy dynamics and also include term in control for robot's state
-        # consider the next state if each potential action was chosen
-        step = lambda u: self.dynamics.A @ state + self.dynamics.B @ (u + self.dynamics.gamma/np.linalg.norm(state - r_state)**2*self.dynamics.get_robot_control(state, r_state))
-        next_states = np.array([step(a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
-        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
-
-        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
-        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
-
-        Q_vals = rs - opt_rewards
-
-        # compute probability of choosing each action
-        prob_action = softmax(self.beta * Q_vals, axis=0)
-        # get row corresponding to chosen action
-        y_i = prob_action[a_idx]
-
-        # update belief
-        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
-        # self.belief = new_belief
-
-        if not return_likelihood:
-            return new_belief
-        else:
-            return new_belief, y_i
-
     def copy(self):
         return CBPEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
 
@@ -172,7 +143,7 @@ class BetaBayesEstimator():
 
         return self.actions[a_idx], a_idx
     
-    def update_belief_(self, state, action, r_state):
+    def update_belief(self, state, action):
         """
         new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal
         """
@@ -195,57 +166,6 @@ class BetaBayesEstimator():
         # self.belief = new_belief
 
         return new_belief
-
-    def update_belief_old_vector(self, state, action, r_state):
-        # project chosen action to discrete set
-        _, a_idx = self.project_action(action)
-
-        # robot should only have access to mean/non-noisy dynamics and also include term in control for robot's state
-        # consider the next state if each potential action was chosen
-        step = lambda u: self.dynamics.A @ state + self.dynamics.B @ (u + self.dynamics.gamma/np.linalg.norm(state - r_state)**2*self.dynamics.get_robot_control(state, r_state))
-        next_states = np.array([step(a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
-        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
-
-        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
-        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
-
-        Q_vals = rs - opt_rewards
-        Q_vals = np.tile(Q_vals[:,:,None], (1,1,self.betas.shape[0])) # mofiying so we can do computation with all betas
-
-        # compute probability of choosing each action (flatten for softmax)
-        prob_action = softmax((Q_vals * self.betas).reshape(self.actions.shape[0], self.belief.shape[0]*self.belief.shape[1]), axis=0)
-        # get row corresponding to chosen action (unflatten for belief update)
-        y_i = prob_action[a_idx]
-        y_i = y_i.reshape(self.belief.shape[0],self.belief.shape[1])
-
-        # update belief
-        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
-
-        # self.belief = new_belief
-
-        return new_belief
-    
-    def update_belief_old(self, state, action, r_state):
-        # project chosen action to discrete set
-        _, a_idx = self.project_action(action)
-        
-        # testing full bayesian belief update "manually" i.e. without vectorizing, for debugging
-        new_belief = np.zeros(self.belief.shape)
-        for theta_idx in range(self.thetas.shape[1]):
-            for beta_idx in range(self.betas.shape[0]):
-                theta = self.thetas[:,[theta_idx]]
-                beta = self.betas[beta_idx]
-                # robot should only have access to mean/non-noisy dynamics and also include term in control for robot's state
-                # consider the next state if each potential action was chosen
-                step = lambda u: self.dynamics.A @ state + self.dynamics.B @ (u + self.dynamics.gamma/np.linalg.norm(state - r_state)**2*self.dynamics.get_robot_control(state, r_state))
-                next_states = np.array([step(a[:,None]) for a in self.actions])
-                
-                rewards = -np.linalg.norm((next_states - theta), axis=1)
-                p_a_given_theta_beta = softmax(beta * rewards)[a_idx][0]
-                new_belief[theta_idx, beta_idx] = p_a_given_theta_beta * self.belief[theta_idx, beta_idx]
-        
-        return new_belief / np.sum(new_belief)
-
 
 def test_fixed_goal(xh0, xr0, goals, r_goal, h_dynamics, r_dynamics):
     h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.7)
@@ -437,7 +357,7 @@ def plot_rollout():
         
         # update the robot's belief over goals and betas
         # r_belief_beta1 = r_belief_beta.update_belief(human.x, uh, robot.x)
-        r_belief_beta2 = r_belief_beta.update_belief_(human.x, uh, robot.x)
+        r_belief_beta2 = r_belief_beta.update_belief(human.x, uh)
         # print(np.allclose(r_belief_beta1, r_belief_beta2))
         # print(np.sum(r_belief_beta1 - r_belief_beta2))
         r_belief_beta.belief = r_belief_beta2
