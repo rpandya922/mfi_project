@@ -36,36 +36,29 @@ class BayesEstimator():
         return self.actions[a_idx], a_idx
 
     def update_belief(self, state, action):
-        # project chosen action to discrete set
-        _, a_idx = self.project_action(action)
+        """
+        new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal
+        """
+        # for each theta, compute probability of choosing each action
+        likelihoods = np.zeros_like(self.belief)
+        for theta_idx in range(self.thetas.shape[1]):
+            theta = self.thetas[:,[theta_idx]]
+            next_state = self.dynamics.step_mean(state, action)
+            Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.Pd @ (next_state - theta)
 
-        # consider the next state if each potential action was chosen
-        next_states = np.array([self.dynamics.step_mean(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
-        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
+            H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.Pd@self.dynamics.B
+            factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
+            Q_star = -(state - theta).T @ self.dynamics.Pd @ (state - theta)
 
-        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
-        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
+            likelihoods[theta_idx] = 1/factor * np.exp(self.beta*(Q_val-Q_star))
 
-        # testing
-        # dists = []
-        # for s in next_states:
-        #     dd = []
-        #     for i in range(3):
-        #         t = self.thetas[:,[i]]
-        #         dd.append(np.linalg.norm(s - t))
-        #     dists.append(dd)
-        # dists = np.array(dists)
-        # assert np.isclose(dists, opt_rewards).all() # passes
+        # update belief using likelihood
+        new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
+        
+        # make sure no values are < 0.01
+        new_belief[new_belief < 0.01] = 0.01
+        new_belief = new_belief / np.sum(new_belief)
 
-        Q_vals = rs - opt_rewards
-
-        # compute probability of choosing each action
-        prob_action = softmax(self.beta * Q_vals, axis=0)
-        # get row corresponding to chosen action
-        y_i = prob_action[a_idx]
-
-        # update belief
-        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
         self.belief = new_belief
 
         return new_belief

@@ -342,7 +342,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
-    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1)
+    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0005)
     beliefs = prior
     r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
     sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
@@ -411,9 +411,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             ax.cla()
         else:
             control_ax = None
-        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=control_ax)
+        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None)
 
         # update robot's belief
+        # uh_d = -h_dyn.Kd @ (xh0 - Ch.T @ h_goal)
         belief.update_belief(xh0, uh)
         # belief.belief = np.ones(3) / 3
         # belief.belief = np.array([1, 0, 0])

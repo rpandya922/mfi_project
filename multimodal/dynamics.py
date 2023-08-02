@@ -80,8 +80,24 @@ class LTI():
         self.B[3,1] = 1
 
         # compute LQR gain for LTI system
-        K, _, _ = control.lqr(self.A, self.B, np.eye(self.n), np.eye(self.m))
+        self.Q = 10*np.eye(self.n)
+        self.R = np.eye(self.m)
+        K, P, _ = control.lqr(self.A, self.B, self.Q, self.R)
         self.K = K
+        self.P = P # solution to Riccati equation (use for computing Q function)
+        
+        Ad = np.array([[1, self.ts, 0, 0],
+                           [0, 1, 0, 0],
+                           [0, 0, 1, self.ts],
+                           [0, 0, 0, 1]])
+        Bd = np.array([[0.5*(self.ts**2), 0],
+                           [self.ts, 0],
+                           [0, 0.5*(self.ts**2)],
+                           [0, self.ts]])
+        Kd, Pd, _ = control.dlqr(Ad, Bd, self.Q, self.R)
+        self.Kd = Kd
+        self.Pd = Pd # solution to discrete-time Riccati equation (use for computing Q function)
+
         self.K2 = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
     
     def mean_dyn(self, x, u, t):
