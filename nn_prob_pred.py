@@ -271,7 +271,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     """
     Runs a number of simulations from the same initial conditions and returns the probability of each goal being the human's intention
     """
-    # TODO: run this with run_trajectory so everything is consistent
+    # NOTE: because of how we're spawning new initial conditions, it's hard to re-use run_trajectory here
     # save data
     all_xh_traj = []
     all_xr_traj = []
@@ -286,7 +286,15 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     xr_init_hist = np.zeros((4, 5)) # necessary for adding shared history to branching trajectories
     init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num, xh_init_hist, xr_init_hist) for _ in range(n_traj)] # start from the first initial contition n_traj times
     branching_num += 1
-    # fig, ax = plt.subplots()
+    plot = False
+    if plot:
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
+        axes = np.array(axes).flatten()
+        ax = axes[0]
+        h_belief_ax = axes[1]
+        h_goal_ax = axes[3]
+        
+        goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
     while len(init_conds) > 0:
         # set the human and robot's initial states
         xh, xr, is_branch, h_belief, b_num_curr, xh_hist, xr_hist = init_conds.pop(0)
@@ -319,21 +327,59 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
         xr_traj[:,[0]] = robot.x
         h_goal_reached = -1
 
-        r_goal_idx = np.argmin(np.linalg.norm(goals[[0,2]] - robot.goal[[0,2]], axis=0))
+        if type(human) == BayesHuman:
+            all_h_beliefs = np.zeros((goals.shape[1], arr_size))
+        else:
+            all_h_beliefs = None
+
+        h_goal_idx = np.argmin(np.linalg.norm(goals - human.goal, axis=0))
+        r_goal_idx = np.argmin(np.linalg.norm(goals - robot.goal, axis=0))
+
+        h_goal_idxs = [h_goal_idx]
+        r_goal_idxs = [r_goal_idx]
 
         i = 0
         while i < horizon:
+            if plot:
+                # plotting
+                ax.cla()
+                # plot trajectory trail so far
+                overlay_timesteps(ax, xh_traj[:,0:i], xr_traj[:,0:i], n_steps=i)
+
+                ax.scatter(goals[0], goals[2], c=goal_colors, s=100)
+                ax.scatter(human.x[0], human.x[2], c="#034483", s=100)
+                ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
+                if robot_obs is not None:
+                    ax.scatter(robot_obs[0], robot_obs[2], c="#FFBF00", s=50)
+                ax.set_xlim(-10, 10)
+                ax.set_ylim(-10, 10)
+
+                h_belief_ax.clear()
+                h_belief_ax.plot(all_h_beliefs[0,:i], label="P(g0)", c=goal_colors[0])
+                h_belief_ax.plot(all_h_beliefs[1,:i], label="P(g1)", c=goal_colors[1])
+                h_belief_ax.plot(all_h_beliefs[2,:i], label="P(g2)", c=goal_colors[2])
+                h_belief_ax.set_xlabel("h belief of r")
+                h_belief_ax.legend()
+
+                # plot human and robot goals
+                h_goal_ax.clear()
+                h_goal_ax.plot(h_goal_idxs, label="h goal", c="b")
+                h_goal_ax.plot(r_goal_idxs, label="r goal", c="r")
+                h_goal_ax.legend()
+
+                plt.pause(0.01)
+
              # compute agent controls
             uh = human.get_u(robot.x)
             ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
-            if robot_obs is not None:
+            if robot_obs is not None and i < 50: # so robot doesn't get stuck if obstacle is near goal
                 ur += robot.dynamics.get_robot_control(robot.x, robot_obs)
-            # robot should stay still for 5 timesteps
-            if i < 5:
-                ur = np.zeros(ur.shape)
+            # # robot should stay still for 5 timesteps
+            # if i < 5:
+            #     ur = np.zeros(ur.shape)
 
             # update human belief (if applicable)
-            if type(human) == BayesHuman and i >= 5:
+            if type(human) == BayesHuman:# and i >= 5:
                 human.update_belief(robot.x, ur)
 
             # compute new states
@@ -349,8 +395,13 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
                 branching_num += 1
 
             # save data
+            if all_h_beliefs is not None:
+                all_h_beliefs[:,i] = human.belief.belief
             xh_traj[:,[i+1]] = xh
             xr_traj[:,[i+1]] = xr
+
+            h_goal_idxs.append(np.linalg.norm(goals - human.goal, axis=0).argmin())
+            r_goal_idxs.append(np.linalg.norm(goals - robot.goal, axis=0).argmin())
 
             # check if human has reached a goal
             if not fixed_horizon:
@@ -359,10 +410,12 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
                     arr_size *= 2
                     xh_traj = np.hstack((xh_traj, np.zeros((human.dynamics.n, arr_size))))
                     xr_traj = np.hstack((xr_traj, np.zeros((robot.dynamics.n, arr_size))))
+                    if all_h_beliefs is not None:
+                        all_h_beliefs = np.hstack((all_h_beliefs, np.zeros((goals.shape[1], arr_size))))
                     # print("expanding arrays")
-                dists = np.linalg.norm(goals[[0,2]] - xh[[0,2]], axis=0)
-                if np.min(dists) < 0.5:
-                    h_goal_reached = np.argmin(dists)
+                goal_dist = np.linalg.norm(xh[[0,2]] - human.goal[[0,2]])
+                if goal_dist < 0.5:
+                    h_goal_reached = np.argmin(np.linalg.norm(goals - human.goal, axis=0))
                     break
             
             # NOTE: don't put any code in the loop after this
@@ -395,7 +448,6 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     # print(np.sum(goals_reached))
     # plt.show()
     # import ipdb; ipdb.set_trace()
-    # 1/0
     return all_xh_traj, all_xr_traj, all_goals_reached, goals_reached / np.sum(goals_reached), goals, xh_hists, xr_hists
 
 def compute_features(xh_hist, xr_hist, xr_future, goals):
@@ -570,7 +622,7 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
         if not branching:
             data = simulate_init_cond(xr0, xh0, human, robot, goals, n_traj=n_traj)
         else:
-            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=n_traj, branching_times=[20, 40, 60, 80, 100])
+            data = simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=n_traj, branching_times=[20, 60, 80])
         xh_traj.append(data[0])
         xr_traj.append(data[1])
         goals_reached.append(data[2])
@@ -820,7 +872,7 @@ if __name__ == "__main__":
     # plt.show()
 
     # save_dataset()
-    create_dataset(n_init_cond=1, branching=False)
+    # create_dataset(n_init_cond=1, branching=True)
 
     # raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
     # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.pkl"
@@ -838,6 +890,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    # raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
-    # processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats.h5"
-    # save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=15, history=5, horizon=20)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.h5"
+    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=500, branching=True, n_traj=10, history=5, horizon=20)
