@@ -131,10 +131,10 @@ class TrajOptProb(object):
         probs = softmax(model_out)
         
         P = probs.flatten()
-        # Q = torch.ones(3) / 3
-        # return (P * (P / Q).log()).sum() # kl divergence
+        Q = torch.ones(3) / 3
+        return (P * (P / Q).log()).sum() # kl divergence
         # return -P[1] # probability of first goal
-        return 0*P[0]
+        # return 0*P[0]
 
     def objective(self, x):
         x = torch.tensor(x).float()
@@ -296,21 +296,23 @@ if __name__ == "__main__":
     # hess = obj.hessian(x0, np.ones(const.shape[0]), 1.0)
     cl = np.zeros((k_plan,))
     cu = np.zeros((k_plan,))
-    lb = np.hstack((np.tile(-np.inf, n_state), -10*np.ones(n_ctrl)))
-    ub = np.hstack((np.tile(np.inf, n_state), 10*np.ones(n_ctrl)))
+    # lb = np.hstack((np.tile(-np.inf, n_state), -10*np.ones(n_ctrl)))
+    # ub = np.hstack((np.tile(np.inf, n_state), 10*np.ones(n_ctrl)))
     nlp = ipopt.Problem(
             n=len(x0),
             m=len(cl),
             problem_obj=obj,
             cl=cl,
             cu=cu,
-            lb=lb,
-            ub=ub
+            # lb=lb,
+            # ub=ub
             )
     # nlp.addOption('mu_strategy', 'adaptive')
-    # nlp.addOption('tol', 1e-5)
-    nlp.addOption('constr_viol_tol', 1e-4)
-    nlp.addOption('max_iter', 1000)
+    nlp.add_option('constr_viol_tol', 1e-3)
+    nlp.add_option('tol', 1e-3)
+    nlp.add_option('max_iter', 1000)
+    nlp.add_option('mu_init', 1e-5)
+    # nlp.addOption('barrier_tol_factor', 100.0)
     # NOTE: runs but does not converge
     # converges with objective fn = 0, but takes ~180 iterations even though initial guess is feasible (?)
     x, info = nlp.solve(x0)

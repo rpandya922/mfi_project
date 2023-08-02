@@ -21,19 +21,19 @@ class BayesEstimator():
         self.belief = prior
 
         # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
-        n_actions = 16
+        n_actions = 32
         angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
         all_actions = []
         # for r in range(1, 6):
-        # for r in [2, 4, 8, 16, 32, 64]:
-        for r in [1]:
+        for r in [2, 4, 8, 16, 32]:
+        # for r in [1]:
             actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
             all_actions.append(actions)
         # TODO: find the right way to handle adding the 0 action
-        # all_actions.append(np.array([0, 0]).T)
+        all_actions.append(np.array([0, 0]).T)
         self.actions = np.vstack(all_actions)
-        
-        # self.actions = np.mgrid[-1:1:21j, -1:1:21j].reshape(2,-1).T
+
+        # self.actions = np.mgrid[-20:20:21j, -20:20:21j].reshape(2,-1).T
 
     def project_action(self, action):
         # passed-in action will be a column vector
@@ -45,11 +45,72 @@ class BayesEstimator():
         return self.actions[a_idx], a_idx
 
     def update_belief(self, state, action):
+        """
+        new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal
+        """
+        # for each theta, compute probability of choosing each action
+        likelihoods = np.zeros_like(self.belief)
+        for theta_idx in range(self.thetas.shape[1]):
+            theta = self.thetas[:,[theta_idx]]
+            next_state = self.dynamics.step(state, action)
+            Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.P @ (next_state - theta)
+
+            H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B
+            factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
+            Q_star = -(state - theta).T @ self.dynamics.P @ (state - theta)
+
+            likelihoods[theta_idx] = 1/factor * np.exp(self.beta*(Q_val-Q_star))
+
+        # update belief using likelihood
+        new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
+        self.belief = new_belief
+
+        return new_belief
+
+    def update_belief_discrete(self, state, action):
         # project chosen action to discrete set
         _, a_idx = self.project_action(action)
 
-        # consider the next state if each potential action was chosen
+        # compute rewards for choosing each possible next action r=-(x-theta)^TQ(x-theta) - u^TRu
+        r_Q = -((state - self.thetas).T @ self.dynamics.Q @ (state - self.thetas)).diagonal()
+        r_R = (self.actions @ self.dynamics.R @ self.actions.T).diagonal()
+        rs = r_Q - r_R[:,None]
+
+        # compute rewards in a loop
+        for goal_idx in range(self.thetas.shape[1]):
+            state_diff = state - self.thetas[:,[goal_idx]]
+            cost_to_go = state_diff.T @ self.dynamics.P @ state_diff
+            rs[:,goal_idx] -= cost_to_go.item()
+        
+        # compute the cost-to-go for each possible (next state, theta) combination
         next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        costs_to_go = np.zeros((self.actions.shape[0], self.thetas.shape[1]))
+        for goal_idx in range(self.thetas.shape[1]):
+            state_diff = next_states.squeeze() - self.thetas[:,goal_idx]
+            cost_to_go = (state_diff @ self.dynamics.P @ state_diff.T).diagonal()
+            costs_to_go[:,goal_idx] = cost_to_go
+        
+        # Q-value is r - (x-theta)^TP(x-theta)
+        Q_vals = rs - costs_to_go
+
+        # compute probability of choosing each action (normalized over all actions for one goal)
+        prob_action = softmax(self.beta * Q_vals, axis=0)
+        # get row corresponding to chosen action (across all goals)
+        y_i = prob_action[a_idx]
+
+        # update belief using likelihood
+        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
+        self.belief = new_belief
+
+        return new_belief
+
+    def update_belief_old(self, state, action):
+        # project chosen action to discrete set
+        _, a_idx = self.project_action(action)
+
+        # compute the next state if each potential action was chosen
+        next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        # compute the reward for choosing each action as negative distance traveled
         rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
 
         # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
@@ -66,14 +127,19 @@ class BayesEstimator():
         # dists = np.array(dists)
         # assert np.isclose(dists, opt_rewards).all() # passes
 
+        # compute Q-values
         Q_vals = rs - opt_rewards
 
-        # compute probability of choosing each action
+        # testing overflow
+        # xis = self.beta * Q_vals
+        # prob_action = softmax(xis - np.max(xis, axis=0), axis=0)
+
+        # compute probability of choosing each action (normalized over all actions for one goal)
         prob_action = softmax(self.beta * Q_vals, axis=0)
-        # get row corresponding to chosen action
+        # get row corresponding to chosen action (across all goals)
         y_i = prob_action[a_idx]
 
-        # update belief
+        # update belief using likelihood
         new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
         self.belief = new_belief
 

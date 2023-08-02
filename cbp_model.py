@@ -79,7 +79,33 @@ class CBPEstimator():
 
         return belief_post
 
-    def update_belief(self, state, action, r_state, return_likelihood=False):
+    def update_belief(self, state, action, return_likelihood=False):
+        """
+        new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal
+        """
+        # for each theta, compute probability of choosing each action
+        likelihoods = np.zeros_like(self.belief)
+        for theta_idx in range(self.thetas.shape[1]):
+            theta = self.thetas[:,[theta_idx]]
+            next_state = self.dynamics.step(state, action)
+            Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.P @ (next_state - theta)
+
+            H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B
+            factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
+            Q_star = -(state - theta).T @ self.dynamics.P @ (state - theta)
+
+            likelihoods[theta_idx] = 1/factor * np.exp(self.beta*(Q_val-Q_star))
+
+        # update belief using likelihood
+        new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
+        self.belief = new_belief
+
+        if not return_likelihood:
+            return new_belief
+        else:
+            return new_belief, likelihoods
+
+    def update_belief_old(self, state, action, r_state, return_likelihood=False):
         # project chosen action to discrete set
         _, a_idx = self.project_action(action)
 
@@ -126,13 +152,13 @@ class BetaBayesEstimator():
         self.belief = prior
 
         # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
-        n_actions = 16
+        n_actions = 8
         angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
         all_actions = []
-        for r in range(1, 3):
+        for r in range(1, 2):
             actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
             all_actions.append(actions)
-        all_actions.append(np.array([0, 0]).T)
+        # all_actions.append(np.array([0, 0]).T)
         self.actions = np.vstack(all_actions)
 
         # self.actions = np.mgrid[-20:20:41j, -20:20:41j].reshape(2,-1).T
@@ -147,6 +173,30 @@ class BetaBayesEstimator():
         return self.actions[a_idx], a_idx
     
     def update_belief_(self, state, action, r_state):
+        """
+        new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal
+        """
+        # for each theta, compute probability of choosing each action
+        likelihoods = np.zeros_like(self.belief)
+        for theta_idx in range(self.thetas.shape[1]):
+            theta = self.thetas[:,[theta_idx]]
+            for beta_idx in range(self.betas.shape[0]):
+                beta = self.betas[beta_idx]
+                next_state = self.dynamics.step(state, action)
+                Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.P @ (next_state - theta)
+
+                H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B
+                factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
+                Q_star = -(state - theta).T @ self.dynamics.P @ (state - theta)
+                likelihoods[theta_idx, beta_idx] = 1/factor * np.exp(beta*(Q_val-Q_star))
+
+        # update belief using likelihood
+        new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
+        # self.belief = new_belief
+
+        return new_belief
+
+    def update_belief_old_vector(self, state, action, r_state):
         # project chosen action to discrete set
         _, a_idx = self.project_action(action)
 
@@ -175,7 +225,7 @@ class BetaBayesEstimator():
 
         return new_belief
     
-    def update_belief(self, state, action, r_state):
+    def update_belief_old(self, state, action, r_state):
         # project chosen action to discrete set
         _, a_idx = self.project_action(action)
         
@@ -321,7 +371,7 @@ def plot_rollout():
     xr0[[1,3]] = 0
     goals = np.random.uniform(-10, 10, (4, 3))
     goals[[1,3]] = 0
-    r_goal = goals[:,[1]] # this is arbitrary since it'll be changed in simulations later anyways
+    r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
 
     # create human and robot objects
     # W = np.diag([0.0, 0.7, 0.0, 0.7])
@@ -329,18 +379,19 @@ def plot_rollout():
     h_dynamics = DIDynamics(ts=ts, W=W)
     r_dynamics = DIDynamics(ts=ts)
 
-    h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.7)
+    h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.0005)
     human = BayesHuman(xh0, h_dynamics, goals, h_belief, gamma=5)
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
-    r_belief = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=1)
-    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=1)
-    r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[0.01, 0.1, 1, 10, 100, 1000], dynamics=h_dynamics)
+    r_belief = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
+    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
+    # r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[0.01, 0.1, 1, 10, 100, 1000], dynamics=h_dynamics)
+    r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1], dynamics=h_dynamics)
 
     # simulate trajectory
     xh_traj = xh0
     xr_traj = xr0
     # simulate for T seconds
-    N = int(15 / ts)
+    N = int(10 / ts)
     h_beliefs = h_belief.belief
     r_beliefs = r_belief.belief
     r_beliefs_nominal = r_belief_nominal.belief
@@ -365,14 +416,16 @@ def plot_rollout():
     for idx in range(N):
         # human.goal = np.array([[-10, 0, 10, 0]]).T
         # compute agent controls
-        uh = human.get_u(robot.x)
+        # uh = human.get_u(robot.x)
+        uh = human.dynamics.get_goal_control(human.x, human.get_goal())
         # uh = np.zeros((2,1)) #+ np.random.uniform(-5, 5, (2,1))
         ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
 
         # update human's belief
         human.update_belief(robot.x, ur)
         # simulate robot nominal belief update
-        r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, robot.x, return_likelihood=True)
+        # r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, robot.x, return_likelihood=True)
+        r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, return_likelihood=True)
         # update robot's belief with cbp
         # r_belief_prior = r_belief.update_belief(human.x, uh, robot.x)
         r_belief_prior = r_belief_nominal.belief
@@ -388,8 +441,11 @@ def plot_rollout():
         # print(np.allclose(r_belief_beta1, r_belief_beta2))
         # print(np.sum(r_belief_beta1 - r_belief_beta2))
         r_belief_beta.belief = r_belief_beta2
+        # max_theta_idx = np.argmax(r_belief_beta.belief.sum(axis=1))
+        # print(r_belief_beta.belief[max_theta_idx])
+        # print(r_belief_beta.betas[np.argmax(r_belief_beta.belief[max_theta_idx])])
 
-        if idx > 5:
+        if idx > -1:
             # input(": ")
             # simulate human's next state
             state = human.dynamics.A @ human.x + human.dynamics.B @ uh
@@ -399,7 +455,7 @@ def plot_rollout():
             for goal_idx in range(goals.shape[1]):
                 goal = goals[:,[goal_idx]]
                 # compute CBP belief update
-                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, state, beta=0.1)
+                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, state, beta=0.5)
                 posts.append(r_belief_post)
                 divs.append(entropy(r_belief_post, r_belief_prior))
                 # we don't want KL divergence, we want the one that puts the highest probability on human's most likely goal

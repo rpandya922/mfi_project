@@ -33,8 +33,11 @@ class DIDynamics(Dynamics):
         self.m = 2
 
         # save discrete-time LQR control
-        K, _, _ = control.dlqr(self.A, self.B, 10*np.eye(self.n), np.eye(self.m))
+        self.Q = 10*np.eye(self.n)
+        self.R = np.eye(self.m)
+        K, P, _ = control.dlqr(self.A, self.B, self.Q, self.R)
         self.K = K
+        self.P = P # solution to Riccati equation (use for computing Q function)
         self.K2 = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
 
         self.gamma = 1

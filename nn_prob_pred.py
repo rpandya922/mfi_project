@@ -88,7 +88,7 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             overlay_timesteps(ax, xh_traj[:,0:i], xr_traj[:,0:i], n_steps=i)
 
             # highlight robot's predicted goal of the human
-            if i > 0:
+            if i > 0 and model is not None:
                 # get the previous robot belief
                 r_belief = all_r_beliefs[:,:,i-1][r_goal_idx]
                 # plot a transparent circle on each of the goals with radius proportional to the robot's belief
@@ -100,6 +100,8 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             ax.scatter(goals[0], goals[2], c=goal_colors, s=100)
             ax.scatter(human.x[0], human.x[2], c="#034483", s=100)
             ax.scatter(robot.x[0], robot.x[2], c="#800E0E", s=100)
+            if robot_obs is not None:
+                ax.scatter(robot_obs[0], robot_obs[2], c="#FFBF00", s=50)
             ax.set_xlim(-10, 10)
             ax.set_ylim(-10, 10)
 
@@ -111,14 +113,15 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             h_belief_ax.legend()
 
             # plot belief conditioned on each potential goal of the robot
-            r_belief_ax.clear()
-            linestyles = ["-", "--", ":"]
-            for goal_idx in range(goals.shape[1]):
-                r_belief = all_r_beliefs[goal_idx,:,:i]
-                r_belief_ax.plot(r_belief[0], label="P(g0)", c=goal_colors[0], linestyle=linestyles[goal_idx])
-                r_belief_ax.plot(r_belief[1], label="P(g1)", c=goal_colors[1], linestyle=linestyles[goal_idx])
-                r_belief_ax.plot(r_belief[2], label="P(g2)", c=goal_colors[2], linestyle=linestyles[goal_idx])
-            r_belief_ax.set_xlabel("r belief of h")
+            if model is not None:
+                r_belief_ax.clear()
+                linestyles = ["-", "--", ":"]
+                for goal_idx in range(goals.shape[1]):
+                    r_belief = all_r_beliefs[goal_idx,:,:i]
+                    r_belief_ax.plot(r_belief[0], label="P(g0)", c=goal_colors[0], linestyle=linestyles[goal_idx])
+                    r_belief_ax.plot(r_belief[1], label="P(g1)", c=goal_colors[1], linestyle=linestyles[goal_idx])
+                    r_belief_ax.plot(r_belief[2], label="P(g2)", c=goal_colors[2], linestyle=linestyles[goal_idx])
+                r_belief_ax.set_xlabel("r belief of h")
 
             # plot human and robot goals
             h_goal_ax.clear()
@@ -268,6 +271,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     """
     Runs a number of simulations from the same initial conditions and returns the probability of each goal being the human's intention
     """
+    # TODO: run this with run_trajectory so everything is consistent
     # save data
     all_xh_traj = []
     all_xr_traj = []
@@ -556,7 +560,8 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
         r_dynamics = DIDynamics(ts=ts)
         r_dynamics.gamma = 10 # for synthetic obstacles for the robot
 
-        belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
+        # NOTE: this value of beta is used with with updated Bayesian inference that uses LQR costs
+        belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.0005) 
         human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=5)
         # human = Human(xh0, h_dynamics, goals, gamma=5)
         robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
@@ -804,17 +809,18 @@ def visualize_dataset(raw_data_path):
 
 if __name__ == "__main__":
     # # save_dataset()
-    np.random.seed(2) # normal test seed
+    # np.random.seed(2) # normal test seed
     # np.random.seed(1)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
-    model_path = "./data/prob_pred/checkpoints/2023-06-23/model_12.pt"
-    stats_file = "./data/prob_pred/checkpoints/2023-06-23/bayes_prob_branching_processed_feats_stats.pkl"
-    plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
-    plt.show()
+    # model_path = "./data/prob_pred/checkpoints/2023-06-23/model_12.pt"
+    # stats_file = "./data/prob_pred/checkpoints/2023-06-23/bayes_prob_branching_processed_feats_stats.pkl"
+    # plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
+    # plt.show()
 
     # save_dataset()
+    create_dataset(n_init_cond=1, branching=False)
 
     # raw_data_path = "./data/prob_pred/bayes_prob_branching.pkl"
     # processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats.pkl"
