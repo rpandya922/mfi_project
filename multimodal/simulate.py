@@ -299,10 +299,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
                     [0, 1, 0, 0]]) # mapping robot state to [x, y]
     
     # NOTE: need W to be invertible for safety controller to work
-    W = np.diag([0.3, 0.01, 0.3, 0.01])
+    W = np.diag([0.5, 0.01, 0.5, 0.01])
     # W = np.diag([0, 0, 0, 0])
     h_dyn = LTI(0.1, W=W)
-    r_dyn = Unicycle(0.1)
+    r_dyn = Unicycle(0.1, kv=2, kpsi=1.2)
     dmin = 1
     if controller == "baseline":
         safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
@@ -318,6 +318,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     safety_actives = []
     distances = []
     all_slacks = np.zeros((0, 3))
+    h_goal_dists = []
+    r_goal_dists = []
+    h_goal_reached = []
+    r_goal_reached = []
 
     # randomly initialize 3 goals
     goals = np.random.uniform(-10, 10, (2, 3))
@@ -412,6 +416,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         else:
             control_ax = None
         ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None)
+        # ur_safe, phi, safety_active, slacks = ur_ref, 0, False, np.zeros(3)
 
         # update robot's belief
         # uh_d = -h_dyn.Kd @ (xh0 - Ch.T @ h_goal)
@@ -427,14 +432,20 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         # change human's goal if applicable
         goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
         if change_h_goal and goal_dist < 0.3:
+            h_goal_reached.append(h_goal_idx)
             h_goal_idx = (h_goal_idx + 1) % goals.shape[1]
             h_goal = goals[:,[h_goal_idx]]
+        else:
+            h_goal_reached.append(-1)
 
         # change robot's goal if applicable
         goal_dist = np.linalg.norm(xr0[[0,1]] - r_goal[:,None])
         if goal_dist < 0.3:
+            r_goal_reached.append(r_goal_idx)
             r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
             r_goal = goals[:,r_goal_idx]
+        else:
+            r_goal_reached.append(-1)
 
         # save data
         xh_traj = np.hstack((xh_traj, xh0))
@@ -444,6 +455,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         safety_actives.append(safety_active)
         distances.append(np.linalg.norm(Cr@xr0 - Ch@xh0))
         all_slacks = np.vstack((all_slacks, slacks))
+        h_goal_dists.append(np.linalg.norm(xh0[[0,2]] - h_goal))
+        r_goal_dists.append(np.linalg.norm(xr0[[0,1]] - r_goal[:,None]))
 
         if plot:
             # plot
@@ -494,9 +507,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
                 # compute ellipse
                 ellipse = Ellipse(xy=Ch@xh_next, width=2*k*sqrt_eig[0], height=2*k*sqrt_eig[1], angle=np.rad2deg(theta), alpha=0.2, color=goal_colors[i])
                 ax.add_patch(ellipse)
-            overlay_timesteps(ax, xh_traj, xr_traj, n_steps=i+1)
+            overlay_timesteps(ax, xh_traj, xr_traj, n_steps=idx+1)
             ax.scatter(xh0[0], xh0[2], c="blue")
-            ax.scatter(xr0[0], xr0[1], c="red")
+            heading = xr0[3]
+            ax.scatter(xr0[0], xr0[1], c="red", marker=(3, 0, 180*heading/np.pi+30), s=150)
             ax.scatter(goals[0], goals[1], c=goal_colors)
             if use_ell_bound:
                 # plot enclosing ellipse in red outline
@@ -511,7 +525,12 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             ax.set_xlim(-10, 10)
             ax.set_ylim(-10, 10)
 
-            plt.pause(0.01)
+            control_ax.cla()
+            control_ax.plot(r_goal_dists, label="r_goal_dist")
+            control_ax.plot(h_goal_dists, label="h_goal_dist")
+            control_ax.legend()
+
+            plt.pause(0.001)
             # save figures for video
             # img_path = f"./data/baseline_ctl/"
             # if not os.path.exists(img_path):
@@ -522,7 +541,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     if plot:
         plt.show()
     
-    return xh_traj, xr_traj, phis, safety_actives, beliefs, distances, all_slacks
+    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached}
+    return ret
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
     n_sim = 100
@@ -542,7 +562,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         pickle.dump(all_stats, f)
 
 if __name__ == "__main__":
-    # np.random.seed(4)
-    # run_trajectory(controller="baseline")
+    # np.random.seed(4) # standard seed
+    # run_trajectory(controller="SEA")
     filepath = f"./data/sim_stats_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
     simulate_all(filepath)

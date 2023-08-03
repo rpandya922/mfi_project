@@ -16,14 +16,14 @@ def integrate_rk4(dx, x0, u, t0, ts):
     return x0 + ((k1 + 2*(k2 + k3) + k4) / 6.0)
 
 class Unicycle():
-    def __init__(self, ts : float, W : np.ndarray = None):
+    def __init__(self, ts : float, W : np.ndarray = None, kv = 1.7, kpsi = 1):
         self.ts = ts # sampling time
         if W is None:
             W  = np.zeros((4, 4))
         self.W = W
 
-        self.kv = 1.7
-        self.kpsi = 1
+        self.kv = kv
+        self.kpsi = kpsi
 
     def f(self, x):
         return np.array([x[2] * np.cos(x[3]), x[2] * np.sin(x[3]), [0], [0]])
@@ -51,9 +51,28 @@ class Unicycle():
         x: [x, y, v, phi]
         goal: [x, y]
         """
-        v_dot = -((x[0] - goal[0])*np.cos(x[3]) + (x[1] - goal[1])*np.sin(x[3])) - (self.kv * x[2])
-        # psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0]) - x[3]))
-        psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0])) - x[3])
+        # compute angle to goal
+        x_diff = goal[0] - x[0]
+        y_diff = goal[1] - x[1]
+        # compute angle between goal and velocity
+        vel_angle = x[3]
+        goal_angle = np.arctan(y_diff/x_diff)
+        angle = goal_angle - vel_angle
+
+        if angle > np.pi/2:
+            goal_angle = goal_angle - np.pi
+        elif angle < -np.pi/2:
+            goal_angle = goal_angle + np.pi
+
+        # trying a 2-stage controller that first moves angle to be <90deg
+        angle2 = goal_angle - vel_angle
+        if abs(angle2) > np.pi/2:
+            v_dot = 0.0*x[2]
+        else:
+            v_dot = -((x[0] - goal[0])*np.cos(x[3]) + (x[1] - goal[1])*np.sin(x[3])) - (self.kv * x[2])
+
+        psi_dot = self.kpsi*(goal_angle - vel_angle)
+        # psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0])) - x[3])
 
         return np.array([v_dot, psi_dot])
 
@@ -80,7 +99,7 @@ class LTI():
         self.B[3,1] = 1
 
         # compute LQR gain for LTI system
-        self.Q = 10*np.eye(self.n)
+        self.Q = 5*np.eye(self.n)
         self.R = np.eye(self.m)
         K, P, _ = control.lqr(self.A, self.B, self.Q, self.R)
         self.K = K
