@@ -35,6 +35,30 @@ class BayesEstimator():
 
         return self.actions[a_idx], a_idx
 
+    def update_belief_continuous(self, state, action):
+        # for each theta, compute probability of choosing each action
+        likelihoods = np.zeros_like(self.belief)
+        for theta_idx in range(self.thetas.shape[1]):
+            theta = self.thetas[:,[theta_idx]]
+            Q_val = -(state - theta).T @ (self.dynamics.Q + self.dynamics.P) @ (state - theta) - (action.T @ self.dynamics.R @ action)
+
+            H = 2*self.dynamics.R
+            factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
+            Q_star = -(state - theta).T @ (self.dynamics.Q + self.dynamics.P) @ (state - theta)
+
+            likelihoods[theta_idx] = 1/factor * np.exp(self.beta*(Q_val-Q_star))
+        
+        # update belief using likelihood
+        new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
+        # import ipdb; ipdb.set_trace()
+        # make sure no values are < 0.01
+        # new_belief[new_belief < 0.01] = 0.01
+        # new_belief = new_belief / np.sum(new_belief)
+
+        self.belief = new_belief
+
+        return new_belief
+
     def update_belief(self, state, action):
         """
         new method that computes exact likelihoods using LQR cost-to-go and Gaussian integral per goal

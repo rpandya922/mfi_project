@@ -32,7 +32,7 @@ class MMSafety():
         # alpha = 1
         # return np.sum(diffs * np.exp(alpha*diffs)) / np.sum(np.exp(alpha*diffs))
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None, return_constraints=False):
         """
         xr: robot state
         xh: human state
@@ -187,6 +187,8 @@ class MMSafety():
             ret = ur_ref, phi, False
         if return_slacks:
             ret += (slacks,)
+        if return_constraints:
+            ret += (Ls, Ss,)
         return ret
 
     def __call__(self, *args, **kwds):
@@ -202,7 +204,7 @@ class BaselineSafety():
         self.k_phi = k_phi
         self.slacks_prev = np.zeros(3)
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None, return_constraints=False):
         """
         xr: robot state
         xh: human state
@@ -329,6 +331,8 @@ class BaselineSafety():
             ret = ur_ref, phi, False
         if return_slacks:
             ret += (np.zeros(3),)
+        if return_constraints:
+            ret += (Ls, Ss,)
         return ret
 
     def __call__(self, *args, **kwds):
@@ -845,7 +849,7 @@ class SEASafety():
         self.lambda_r = lambda_r
         self.k_phi = k_phi
 
-    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None):
+    def compute_safe_control(self, xr, xh, ur_ref, thetas, belief, sigmas, return_slacks=False, time=None, ax=None, return_constraints=False):
         """
         xr: robot state
         xh: human state
@@ -932,7 +936,10 @@ class SEASafety():
 
         if return_slacks:
             ret += (np.zeros(3),)
-
+        if return_constraints:
+            Ls = [L]
+            Ss = [S]
+            ret += (Ls, Ss,)
         return ret
 
     def __call__(self, *args, **kwds):

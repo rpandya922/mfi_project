@@ -322,6 +322,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     r_goal_dists = []
     h_goal_reached = []
     r_goal_reached = []
+    u_refs = []
+    u_safes = []
+    all_Ls = []
+    all_Ss = []
 
     # randomly initialize 3 goals
     goals = np.random.uniform(-10, 10, (2, 3))
@@ -347,6 +351,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
     belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0005)
+    # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
     r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
     sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
@@ -415,7 +420,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             ax.cla()
         else:
             control_ax = None
-        ur_safe, phi, safety_active, slacks = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None)
+        # TODO: save reference control, safe control, and control constraints
+        ur_safe, phi, safety_active, slacks, Ls, Ss = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None, return_constraints=True)
         # ur_safe, phi, safety_active, slacks = ur_ref, 0, False, np.zeros(3)
 
         # update robot's belief
@@ -457,6 +463,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         all_slacks = np.vstack((all_slacks, slacks))
         h_goal_dists.append(np.linalg.norm(xh0[[0,2]] - h_goal))
         r_goal_dists.append(np.linalg.norm(xr0[[0,1]] - r_goal[:,None]))
+        u_refs.append(ur_ref)
+        u_safes.append(ur_safe)
+        all_Ls.append(Ls)
+        all_Ss.append(Ss)
 
         if plot:
             # plot
@@ -541,11 +551,11 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     if plot:
         plt.show()
     
-    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached}
+    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached, "u_refs": u_refs, "u_safes": u_safes, "all_Ls": all_Ls, "all_Ss": all_Ss}
     return ret
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
-    n_sim = 100
+    n_sim = 500
     controllers = ["baseline", "multimodal", "SEA"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
