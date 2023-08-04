@@ -345,7 +345,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     # xr0 = np.array([[-5, 0, -5, 0]]).T
     distances.append(np.linalg.norm((Cr@xr0) - (Ch@xh0)))
 
-    T = 20 # in seconds
+    T = 25 # in seconds
     N = int(T / h_dyn.ts)
 
     # robot's belief about the human's goal
@@ -555,7 +555,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     return ret
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
-    n_sim = 500
+    n_sim = 1000
     controllers = ["baseline", "multimodal", "SEA"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
