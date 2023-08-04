@@ -170,9 +170,9 @@ def run_trajectory(human, robot, goals, horizon=None, model=None, plot=True, rob
             # use robot's belief to pick which goal to move toward by picking the one that puts the highest probability on the human's nominal goal (what we observe in the first 5 timesteps)
             r_beliefs = np.array(r_beliefs)
             # TODO: set goal only if specified
-            # nominal_goal_idx = 2
-            # r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
-            # robot.set_goal(robot.goals[:,[r_goal_idx]])
+            nominal_goal_idx = 1
+            r_goal_idx = np.argmax(r_beliefs[:,nominal_goal_idx])
+            robot.set_goal(robot.goals[:,[r_goal_idx]])
             all_r_beliefs[:,:,i] = r_beliefs
 
         # compute agent controls
@@ -717,7 +717,7 @@ def plot_model_pred(model_path, horizon=20, hidden_size=128, num_layers=2, hist_
     h_dynamics = DIDynamics(ts=ts, W=W)
     r_dynamics = DIDynamics(ts=ts)
 
-    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=1)
+    belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.0005)
     human = BayesHuman(xh0, h_dynamics, goals, belief, gamma=5)
     # human = Human(xh0, h_dynamics, goals, gamma=5)
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
@@ -861,15 +861,18 @@ def visualize_dataset(raw_data_path):
 
 if __name__ == "__main__":
     # # save_dataset()
-    # np.random.seed(2) # normal test seed
+    np.random.seed(2) # normal test seed
     # np.random.seed(1)
+    # np.random.seed(0)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-23/model_12.pt"
     # stats_file = "./data/prob_pred/checkpoints/2023-06-23/bayes_prob_branching_processed_feats_stats.pkl"
-    # plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
-    # plt.show()
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt"
+    stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl"
+    plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
+    plt.show()
 
     # save_dataset()
     # create_dataset(n_init_cond=1, branching=True)
@@ -890,6 +893,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats.h5"
-    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats.h5"
+    # save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)

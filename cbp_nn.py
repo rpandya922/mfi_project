@@ -71,11 +71,12 @@ def plot_rollout(model_path, stats_file, hist_feats=21, plan_feats=10, k_hist=5,
     r_dynamics = DIDynamics(ts=ts)
 
     # create robot and human objects
-    h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.7)
+    # h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.7)
+    h_belief = BayesEstimator(thetas=goals, dynamics=r_dynamics, beta=0.0005)
     human = BayesHuman(xh0, h_dynamics, goals, h_belief, gamma=5)
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
     r_belief = np.ones(goals.shape[1]) / goals.shape[1]
-    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=2)
+    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[0.01, 0.1, 1, 10, 100, 1000], dynamics=h_dynamics)
 
     # data saving
@@ -114,13 +115,14 @@ def plot_rollout(model_path, stats_file, hist_feats=21, plan_feats=10, k_hist=5,
         # update human's belief
         human.update_belief(robot.x, ur)
         # simulate robot nominal belief update
-        r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, robot.x, return_likelihood=True)
+        r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, return_likelihood=True)
         r_belief_prior = r_belief_nominal.belief
         
         # update the robot's belief over goals and betas
-        r_belief_beta2 = r_belief_beta.update_belief_(human.x, uh, robot.x)
+        r_belief_beta2 = r_belief_beta.update_belief(human.x, uh)
         r_belief_beta.belief = r_belief_beta2
 
+        # TODO: change this to deal with idx < k_hist (by 0-padding)
         if idx > 5:
             # loop through goals and compute belief update for each
             divs = []
@@ -228,8 +230,10 @@ def plot_rollout(model_path, stats_file, hist_feats=21, plan_feats=10, k_hist=5,
     plt.show()
 
 if __name__ == "__main__":
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230623-12.pt"
-    stats_file = "./data/models/prob_pred_intention_predictor_bayes_20230623-12_stats.pkl"
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230623-12.pt"
+    # stats_file = "./data/models/prob_pred_intention_predictor_bayes_20230623-12_stats.pkl"
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt"
+    stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl"
     k_hist = 5
     k_plan = 20
     plot_rollout(model_path, stats_file, k_hist=k_hist, k_plan=k_plan)
