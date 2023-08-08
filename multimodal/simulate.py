@@ -305,11 +305,11 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     r_dyn = Unicycle(0.1, kv=2, kpsi=1.2)
     dmin = 1
     if controller == "baseline":
-        safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=2)
     elif controller == "multimodal":
-        safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=2)
     elif controller == "SEA":
-        safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=2)
 
     # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = BaselineSafetySamples(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
