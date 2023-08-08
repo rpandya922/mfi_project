@@ -350,10 +350,10 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
-    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0005)
+    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0002)
     # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
-    r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
+    r_sigma = np.diag([1.0, 0.01, 0.5, 0.01])
     sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
 
     if plot:
@@ -448,7 +448,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         goal_dist = np.linalg.norm(xr0[[0,1]] - r_goal[:,None])
         if goal_dist < 0.3:
             r_goal_reached.append(r_goal_idx)
-            r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
+            # r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
+            r_goal_idx = np.random.randint(0, goals.shape[1])
             r_goal = goals[:,r_goal_idx]
         else:
             r_goal_reached.append(-1)
