@@ -350,7 +350,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
-    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0005)
+    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.001)
     # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
     r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
@@ -420,7 +420,6 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             ax.cla()
         else:
             control_ax = None
-        # TODO: save reference control, safe control, and control constraints
         ur_safe, phi, safety_active, slacks, Ls, Ss = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None, return_constraints=True)
         if slacks is None:
             slacks = np.zeros(n_goals)
@@ -437,6 +436,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         xr0 = r_dyn.step(xr0, ur_safe)
         # xr0 = r_dyn.step(xr0, ur_ref)
 
+        reset_belief = False
         # change human's goal if applicable
         goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
         if change_h_goal and goal_dist < 0.3:
@@ -445,6 +445,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             goals[:,[h_goal_idx]] = np.random.uniform(-10, 10, (2,1))
             h_goal_idx = (h_goal_idx + 1) % goals.shape[1]
             h_goal = goals[:,[h_goal_idx]]
+            reset_belief = True
         else:
             h_goal_reached.append(-1)
 
@@ -456,9 +457,13 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             # r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
             # r_goal_idx = np.random.randint(0, goals.shape[1])
             # r_goal = goals[:,r_goal_idx]
+            reset_belief = True
         else:
             r_goal_reached.append(-1)
 
+        if reset_belief:
+            belief.belief = np.ones(n_goals) / n_goals
+            belief.thetas = Ch.T @ goals
         
         # h_dists = np.linalg.norm(xh0[[0,2]] - goals, axis=0)
         # h_goal_idx = np.argmin(h_dists)
@@ -486,7 +491,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
         if plot:
             # plot
-            goal_colors = ["#3A637B", "#C4A46B", "#FF5A00", "#a3b18a"]
+            # goal_colors = ["#3A637B", "#C4A46B", "#FF5A00", "#a3b18a"]
+            goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
             slack_ax.cla()
             for i in range(n_goals):
                 slack_ax.plot(3 - all_slacks[:,i], label=f"(k-s)-sigma (g{i})", c=goal_colors[i])
@@ -577,7 +583,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         np.random.seed(4)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False)
+            res = run_trajectory(controller=controller, plot=False, n_goals=5)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats
@@ -588,6 +594,6 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
 
 if __name__ == "__main__":
     # np.random.seed(4) # standard seed
-    # run_trajectory(controller="multimodal")
+    # run_trajectory(controller="multimodal", n_goals=3)
     filepath = f"./data/sim_stats_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
     simulate_all(filepath)

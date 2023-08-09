@@ -65,11 +65,11 @@ class Unicycle():
             goal_angle = goal_angle + np.pi
 
         # trying a 2-stage controller that first moves angle to be <90deg
-        # angle2 = goal_angle - vel_angle
-        # if abs(angle2) > np.pi/2:
-        #     v_dot = 0.0*x[2]
-        # else:
-        v_dot = -((x[0] - goal[0])*np.cos(x[3]) + (x[1] - goal[1])*np.sin(x[3])) - (self.kv * x[2])
+        angle2 = goal_angle - vel_angle
+        if abs(angle2) > np.pi/2:
+            v_dot = 0.0*x[2]
+        else:
+            v_dot = -((x[0] - goal[0])*np.cos(x[3]) + (x[1] - goal[1])*np.sin(x[3])) - (self.kv * x[2])
 
         psi_dot = self.kpsi*(goal_angle - vel_angle)
         # psi_dot = self.kpsi * (np.arctan((x[1] - goal[1])/(x[0] - goal[0])) - x[3])

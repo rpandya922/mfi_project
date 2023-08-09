@@ -89,7 +89,7 @@ class MMSafety():
         # compute slack variables
         k = 3 # nominal 3-sigma bound
         epsilon = 0.003 # 99.7% confidence
-        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s) + np.linalg.norm(s)
+        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s) + np.linalg.norm(k-s)
         const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
         # const = lambda s: (belief @ chi2.cdf((k-s)**2, df=xh.shape[0])) - (1-epsilon) # multivariate normal CDF 
         const_lb = lambda s: s # force slack variables to be positive
@@ -98,7 +98,7 @@ class MMSafety():
             slack_init = np.zeros(thetas.shape[1])
         else:
             slack_init = self.slacks_prev
-        res = minimize(obj, slack_init, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        res = minimize(obj, slack_init, method="SLSQP", constraints={'type': 'ineq', 'fun': const}, options={"maxiter": 300})
         # res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
 
         # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
