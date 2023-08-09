@@ -11,7 +11,7 @@ class MMSafety():
         self.eta = eta
         self.lambda_r = lambda_r
         self.k_phi = k_phi
-        self.slacks_prev = np.zeros(3)
+        self.slacks_prev = None
 
     def slack_var_helper_(self, xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, slacks):
         diffs = np.zeros((thetas.shape[1], thetas.shape[1]))
@@ -94,8 +94,12 @@ class MMSafety():
         # const = lambda s: (belief @ chi2.cdf((k-s)**2, df=xh.shape[0])) - (1-epsilon) # multivariate normal CDF 
         const_lb = lambda s: s # force slack variables to be positive
         constraints = [{'type': 'ineq', 'fun': const}, {'type': 'ineq', 'fun': const_lb}]
-        res = minimize(obj, self.slacks_prev, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
-        res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        if self.slacks_prev is None:
+            slack_init = np.zeros(thetas.shape[1])
+        else:
+            slack_init = self.slacks_prev
+        res = minimize(obj, slack_init, method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        # res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
 
         # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
         # lb = 0
@@ -122,47 +126,51 @@ class MMSafety():
             # S = -self.eta - self.lambda_r - (grad_phi_xr @ self.r_dyn.f(xr)).item() - (grad_phi_xh @ self.h_dyn.step_mean(xh, uh_i)).item() - gammas[i]*(k - slacks[i])
             Ls.append(L)
             Ss.append(S)
-            # TODO: compute the tighest constraint and only use that one (they are all parallel constraints)
             # constraints.append({'type': 'ineq', 'fun': lambda u: S - (L @ u).item()})
 
         #     print(f"S[{i}]: {S}")
         #     print((grad_phi_xr @ self.r_dyn.f(xr)).item())
         # print()
         
-        # compute constraints
+        # compute the tighest constraint and only use that one (they are all parallel constraints)
+        S_min = np.amin(Ss)
+        fun = lambda u: S_min - (Ls[0] @ u).item()
+        constraints.append({'type': 'ineq', 'fun': fun})
+
+        # compute constraints (old version, only handled 3 constraints)
         # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
-        fun = lambda u: Ss[0] - (Ls[0] @ u).item()
-        fun1 = lambda u: Ss[0] - Ls[0] @ u
-        constraints.append({'type': 'ineq', 'fun': fun})
+        # fun = lambda u: Ss[0] - (Ls[0] @ u).item()
+        # fun1 = lambda u: Ss[0] - Ls[0] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        fun = lambda u: Ss[1] - (Ls[1] @ u).item()
-        fun2 = lambda u: Ss[1] - Ls[1] @ u
-        constraints.append({'type': 'ineq', 'fun': fun})
+        # fun = lambda u: Ss[1] - (Ls[1] @ u).item()
+        # fun2 = lambda u: Ss[1] - Ls[1] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        fun = lambda u: Ss[2] - (Ls[2] @ u).item()
-        fun3 = lambda u: Ss[2] - Ls[2] @ u
-        constraints.append({'type': 'ineq', 'fun': fun})
+        # fun = lambda u: Ss[2] - (Ls[2] @ u).item()
+        # fun3 = lambda u: Ss[2] - Ls[2] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        # generate meshgrid of controls
-        us = np.linspace(-30, 30, 500)
-        U1, U2 = np.meshgrid(us, us)
-        U = np.vstack((U1.flatten(), U2.flatten()))
+        # # generate meshgrid of controls
+        # us = np.linspace(-30, 30, 500)
+        # U1, U2 = np.meshgrid(us, us)
+        # U = np.vstack((U1.flatten(), U2.flatten()))
 
-        # compute if each point satisfies constraints
-        c1_satisfied = fun1(U) >= 0
-        c2_satisfied = fun2(U) >= 0
-        c3_satisfied = fun3(U) >= 0
+        # # compute if each point satisfies constraints
+        # c1_satisfied = fun1(U) >= 0
+        # c2_satisfied = fun2(U) >= 0
+        # c3_satisfied = fun3(U) >= 0
 
-        if plot_controls:
-            ax.cla()
-            ax.scatter(U[0,c1_satisfied], U[1,c1_satisfied], c='b', label='c1 satisfied', alpha=0.1, s=2)
-            ax.scatter(U[0,c2_satisfied], U[1,c2_satisfied], c='g', label='c2 satisfied', alpha=0.1, s=2)
-            ax.scatter(U[0,c3_satisfied], U[1,c3_satisfied], c='purple', label='c3 satisfied', alpha=0.1, s=2)
+        # if plot_controls:
+        #     ax.cla()
+        #     ax.scatter(U[0,c1_satisfied], U[1,c1_satisfied], c='b', label='c1 satisfied', alpha=0.1, s=2)
+        #     ax.scatter(U[0,c2_satisfied], U[1,c2_satisfied], c='g', label='c2 satisfied', alpha=0.1, s=2)
+        #     ax.scatter(U[0,c3_satisfied], U[1,c3_satisfied], c='purple', label='c3 satisfied', alpha=0.1, s=2)
 
-            ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
+        #     ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
 
-            ax.set_xlim(-30, 30)
-            ax.set_ylim(-30, 30)
+        #     ax.set_xlim(-30, 30)
+        #     ax.set_ylim(-30, 30)
 
         # objective function
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
@@ -273,40 +281,45 @@ class BaselineSafety():
             Ls.append(L)
             Ss.append(S)
         
-        # compute constraints
-        # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
-        fun = lambda u: Ss[0] - (Ls[0] @ u).item()
-        fun1 = lambda u: Ss[0] - Ls[0] @ u
+        # compute the tighest constraint and only use that one (they are all parallel constraints)
+        S_min = np.amin(Ss)
+        fun = lambda u: S_min - (Ls[0] @ u).item()
         constraints.append({'type': 'ineq', 'fun': fun})
+        
+        # # compute constraints
+        # # NOTE: if lambda's are created inside a loop, the variables will refer to the value of that *token* at *execution time*, so we need to hard-code 0,1,2 here
+        # fun = lambda u: Ss[0] - (Ls[0] @ u).item()
+        # fun1 = lambda u: Ss[0] - Ls[0] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        fun = lambda u: Ss[1] - (Ls[1] @ u).item()
-        fun2 = lambda u: Ss[1] - Ls[1] @ u
-        constraints.append({'type': 'ineq', 'fun': fun})
+        # fun = lambda u: Ss[1] - (Ls[1] @ u).item()
+        # fun2 = lambda u: Ss[1] - Ls[1] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        fun = lambda u: Ss[2] - (Ls[2] @ u).item()
-        fun3 = lambda u: Ss[2] - Ls[2] @ u
-        constraints.append({'type': 'ineq', 'fun': fun})
+        # fun = lambda u: Ss[2] - (Ls[2] @ u).item()
+        # fun3 = lambda u: Ss[2] - Ls[2] @ u
+        # constraints.append({'type': 'ineq', 'fun': fun})
 
-        # generate meshgrid of controls
-        us = np.linspace(-30, 30, 500)
-        U1, U2 = np.meshgrid(us, us)
-        U = np.vstack((U1.flatten(), U2.flatten()))
+        # # generate meshgrid of controls
+        # us = np.linspace(-30, 30, 500)
+        # U1, U2 = np.meshgrid(us, us)
+        # U = np.vstack((U1.flatten(), U2.flatten()))
 
-        # compute if each point satisfies constraints
-        c1_satisfied = fun1(U) >= 0
-        c2_satisfied = fun2(U) >= 0
-        c3_satisfied = fun3(U) >= 0
+        # # compute if each point satisfies constraints
+        # c1_satisfied = fun1(U) >= 0
+        # c2_satisfied = fun2(U) >= 0
+        # c3_satisfied = fun3(U) >= 0
 
-        if plot_controls:
-            ax.cla()
-            ax.scatter(U[0,c1_satisfied], U[1,c1_satisfied], c='b', label='c1 satisfied', alpha=0.1, s=2)
-            ax.scatter(U[0,c2_satisfied], U[1,c2_satisfied], c='g', label='c2 satisfied', alpha=0.1, s=2)
-            ax.scatter(U[0,c3_satisfied], U[1,c3_satisfied], c='purple', label='c3 satisfied', alpha=0.1, s=2)
+        # if plot_controls:
+        #     ax.cla()
+        #     ax.scatter(U[0,c1_satisfied], U[1,c1_satisfied], c='b', label='c1 satisfied', alpha=0.1, s=2)
+        #     ax.scatter(U[0,c2_satisfied], U[1,c2_satisfied], c='g', label='c2 satisfied', alpha=0.1, s=2)
+        #     ax.scatter(U[0,c3_satisfied], U[1,c3_satisfied], c='purple', label='c3 satisfied', alpha=0.1, s=2)
 
-            ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
+        #     ax.scatter(ur_ref[0], ur_ref[1], c='r', label='ur_ref', s=100)
 
-            ax.set_xlim(-30, 30)
-            ax.set_ylim(-30, 30)
+        #     ax.set_xlim(-30, 30)
+        #     ax.set_ylim(-30, 30)
 
         # objective function
         obj = lambda u: np.linalg.norm(u - ur_ref)**2
@@ -330,7 +343,7 @@ class BaselineSafety():
             # safety constraint is inactive
             ret = ur_ref, phi, False
         if return_slacks:
-            ret += (np.zeros(3),)
+            ret += (None,)
         if return_constraints:
             ret += (Ls, Ss,)
         return ret
@@ -935,7 +948,7 @@ class SEASafety():
             ret = ur_ref, phi, False
 
         if return_slacks:
-            ret += (np.zeros(3),)
+            ret += (None,)
         if return_constraints:
             Ls = [L]
             Ss = [S]
