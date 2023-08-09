@@ -570,7 +570,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
     # TODO: re-run with new random goals added for both agents after goals are reached
-    n_sim = 2
+    n_sim = 100
     controllers = ["baseline", "multimodal", "SEA"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
