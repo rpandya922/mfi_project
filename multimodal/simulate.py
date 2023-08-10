@@ -326,13 +326,16 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     u_safes = []
     all_Ls = []
     all_Ss = []
+    r_goals = []
 
     # randomly initialize 3 goals
     goals = np.random.uniform(-10, 10, (2, n_goals))
     h_goal_idx = np.random.randint(0, n_goals)
     h_goal = goals[:,[h_goal_idx]]
-    r_goal_idx = np.random.randint(0, n_goals)
-    r_goal = goals[:,r_goal_idx]
+    # r_goal_idx = np.random.randint(0, n_goals)
+    # r_goal = goals[:,r_goal_idx]
+    r_goal_idx = 0
+    r_goal = np.random.uniform(-10, 10, 2)
 
     # initial positions
     # xh0 = np.array([[0, 0, 0, 0]]).T
@@ -436,16 +439,16 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         xr0 = r_dyn.step(xr0, ur_safe)
         # xr0 = r_dyn.step(xr0, ur_ref)
 
-        reset_belief = False
+        # reset_belief = False
         # change human's goal if applicable
         goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
         if change_h_goal and goal_dist < 0.3:
             h_goal_reached.append(h_goal_idx)
             # create a new goal
-            goals[:,[h_goal_idx]] = np.random.uniform(-10, 10, (2,1))
+            # goals[:,[h_goal_idx]] = np.random.uniform(-10, 10, (2,1))
             h_goal_idx = (h_goal_idx + 1) % goals.shape[1]
             h_goal = goals[:,[h_goal_idx]]
-            reset_belief = True
+            # reset_belief = True
         else:
             h_goal_reached.append(-1)
 
@@ -453,26 +456,27 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         goal_dist = np.linalg.norm(xr0[[0,1]] - r_goal[:,None])
         if goal_dist < 0.3:
             r_goal_reached.append(r_goal_idx)
-            goals[:,[r_goal_idx]] = np.random.uniform(-10, 10, (2, 1))
+            r_goal = np.random.uniform(-10, 10, 2)
+            # goals[:,[r_goal_idx]] = np.random.uniform(-10, 10, (2, 1))
             # r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
             # r_goal_idx = np.random.randint(0, goals.shape[1])
             # r_goal = goals[:,r_goal_idx]
-            reset_belief = True
+            # reset_belief = True
         else:
             r_goal_reached.append(-1)
 
-        if reset_belief:
-            belief.belief = np.ones(n_goals) / n_goals
-            belief.thetas = Ch.T @ goals
+        # if reset_belief:
+        #     belief.belief = np.ones(n_goals) / n_goals
+        #     belief.thetas = Ch.T @ goals
         
         # h_dists = np.linalg.norm(xh0[[0,2]] - goals, axis=0)
         # h_goal_idx = np.argmin(h_dists)
         h_goal = goals[:,[h_goal_idx]] # necessary for changing goals
 
         # robot's goal is closest to itself
-        r_dists = np.linalg.norm(xr0[[0,1]] - goals, axis=0)
-        r_goal_idx = np.argmin(r_dists)
-        r_goal = goals[:,r_goal_idx]
+        # r_dists = np.linalg.norm(xr0[[0,1]] - goals, axis=0)
+        # r_goal_idx = np.argmin(r_dists)
+        # r_goal = goals[:,r_goal_idx]
 
         # save data
         xh_traj = np.hstack((xh_traj, xh0))
@@ -488,6 +492,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         u_safes.append(ur_safe)
         all_Ls.append(Ls)
         all_Ss.append(Ss)
+        r_goals.append(r_goal)
 
         if plot:
             # plot
@@ -542,6 +547,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             heading = xr0[3]
             ax.scatter(xr0[0], xr0[1], c="red", marker=(3, 0, 180*heading/np.pi+30), s=150)
             ax.scatter(goals[0], goals[1], c=goal_colors)
+            ax.scatter([r_goal[0]], [r_goal[1]], marker="x", c="k")
             if use_ell_bound:
                 # plot enclosing ellipse in red outline
                 eigenvalues, eigenvectors = np.linalg.eig(sigma_enclose)
@@ -571,7 +577,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     if plot:
         plt.show()
     
-    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached, "u_refs": u_refs, "u_safes": u_safes, "all_Ls": all_Ls, "all_Ss": all_Ss}
+    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached, "u_refs": u_refs, "u_safes": u_safes, "all_Ls": all_Ls, "all_Ss": all_Ss, "r_goals": r_goals}
     return ret
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
