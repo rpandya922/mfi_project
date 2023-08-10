@@ -586,7 +586,8 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
     controllers = ["baseline", "multimodal", "SEA"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
-        np.random.seed(4)
+        # np.random.seed(4)
+        np.random.seed(0)
         controller_stats = []
         for i in tqdm(range(n_sim)):
             res = run_trajectory(controller=controller, plot=False, n_goals=4)
