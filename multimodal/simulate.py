@@ -353,7 +353,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
-    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.001)
+    belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0003)
     # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
     r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
@@ -589,7 +589,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         np.random.seed(4)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False, n_goals=5)
+            res = run_trajectory(controller=controller, plot=False, n_goals=4)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats
