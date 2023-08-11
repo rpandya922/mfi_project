@@ -577,7 +577,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     if plot:
         plt.show()
     
-    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached, "u_refs": u_refs, "u_safes": u_safes, "all_Ls": all_Ls, "all_Ss": all_Ss, "r_goals": r_goals}
+    ret = {"xh_traj": xh_traj, "xr_traj": xr_traj, "phis": phis, "safety_actives": safety_actives, "beliefs": beliefs, "distances": distances, "all_slacks": all_slacks, "h_goal_dists": h_goal_dists, "r_goal_dists": r_goal_dists, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached, "u_refs": u_refs, "u_safes": u_safes, "all_Ls": all_Ls, "all_Ss": all_Ss, "r_goals": r_goals, "goals": goals}
     return ret
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
