@@ -70,6 +70,83 @@ class BayesEstimator():
     def copy(self):
         return BayesEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
 
+class BayesEstimatorAR():
+    def __init__(self, thetas, dynamics, prior=None, beta=0.7):
+
+        self.thetas = thetas
+        self.dynamics = dynamics
+        self.beta = beta
+
+        n_theta = thetas.shape[1]
+        if prior is None:
+            prior = np.ones(n_theta) / n_theta
+        else:
+            assert len(prior) == n_theta
+        self.belief = prior
+
+        # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
+        n_actions = 16
+        angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
+        all_actions = []
+        # for r in range(1, 6):
+        # for r in [2, 4, 8, 16, 32]:
+        for r in [1]:
+            actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
+            all_actions.append(actions)
+        # TODO: find the right way to handle adding the 0 action
+        # all_actions.append(np.array([0, 0]).T)
+        self.actions_wo_zero = np.vstack(all_actions)
+
+        actions_w_zero = np.vstack((self.actions_wo_zero, np.zeros((1,2))))
+        self.actions_w_zero = actions_w_zero
+
+        self.actions = self.actions_wo_zero
+
+        # self.actions = np.mgrid[-20:20:21j, -20:20:21j].reshape(2,-1).T
+
+    def project_action(self, action):
+        # passed-in action will be a column vector
+        a = action.flatten()
+        # find closest action
+        dists = np.linalg.norm(self.actions - a, axis=1)
+        a_idx = np.argmin(dists)
+
+        return self.actions[a_idx], a_idx
+    
+    def update_belief(self, state, action):
+                # project chosen action to discrete set
+        _, a_idx = self.project_action(action)
+
+        # compute the next state if each potential action was chosen
+        next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        # compute the reward for choosing each action as negative distance traveled
+        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
+
+        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
+        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
+
+        # compute Q-values
+        Q_vals = rs - opt_rewards
+
+        # testing overflow
+        # xis = self.beta * Q_vals
+        # prob_action = softmax(xis - np.max(xis, axis=0), axis=0)
+
+        # compute probability of choosing each action (normalized over all actions for one goal)
+        prob_action = softmax(self.beta * Q_vals, axis=0)
+        # get row corresponding to chosen action (across all goals)
+        y_i = prob_action[a_idx]
+
+        # update belief using likelihood
+        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
+
+        # set min belief to 1%
+        new_belief[new_belief < 0.01] = 0.01
+
+        self.belief = new_belief
+
+        return new_belief
+
 # TODO: is it better to have Human and BayesHuman inherit from a BaseHuman or just do it this way?
 class BayesHuman(Human):
     def __init__(self, x0, dynamics : Dynamics, goals, belief : BayesEstimator, gamma=1):
