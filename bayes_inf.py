@@ -55,7 +55,7 @@ class BayesEstimator():
             next_state = self.dynamics.step(state, action)
             Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.P @ (next_state - theta)
 
-            H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B
+            H = 2*(self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B)
             factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
             Q_star = -(state - theta).T @ self.dynamics.P @ (state - theta)
 

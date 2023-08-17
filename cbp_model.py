@@ -156,14 +156,18 @@ class BetaBayesEstimator():
                 next_state = self.dynamics.step(state, action)
                 Q_val = -(state - theta).T @ self.dynamics.Q @ (state - theta) - (action.T @ self.dynamics.R @ action) - (next_state - theta).T @ self.dynamics.P @ (next_state - theta)
 
-                H = 2*self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B
+                H = 2*beta*(self.dynamics.R + self.dynamics.B.T@self.dynamics.P@self.dynamics.B)
                 factor = np.sqrt((2*np.pi)**self.dynamics.m / np.linalg.det(H))
                 Q_star = -(state - theta).T @ self.dynamics.P @ (state - theta)
                 likelihoods[theta_idx, beta_idx] = 1/factor * np.exp(beta*(Q_val-Q_star))
 
+        # import ipdb; ipdb.set_trace()
         # update belief using likelihood
         new_belief = (likelihoods * self.belief) / np.sum(likelihoods * self.belief)
         # self.belief = new_belief
+
+        # set min belief value at 0.01
+        new_belief[new_belief < 0.005] = 0.005
 
         return new_belief
     

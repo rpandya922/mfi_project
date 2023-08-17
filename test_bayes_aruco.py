@@ -206,8 +206,6 @@ def bayes_inf_rs2():
     xh_traj = np.zeros((4, 0))
     beliefs = np.zeros((0, n_goals))
     beliefs_beta = np.zeros((beta_belief.belief.shape[0], beta_belief.belief.shape[1], 0))
-    # xh_traj = np.hstack((xh_traj, xh))
-    # beliefs = np.vstack((beliefs, belief.belief))
 
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 7))
     axes = axes.flatten()

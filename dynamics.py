@@ -59,6 +59,26 @@ class DIDynamics(Dynamics):
 
         return u
 
+    def get_potential_field_control(self, x, obs, sigma=None):
+        # use LQR gain to get obstacle avoidance control
+        d = np.linalg.norm(x[[0,2]] - obs[[0,2]])
+
+        # print('d: ')
+        # print(d)
+        if sigma is not None:
+            d = d - sigma
+
+        # make sure d doesn't get to 0 (for numerical stability)
+        d = max(d, 0.1)
+        # if d > 5:
+        #     return np.zeros((self.m, 1))
+        u = (self.gamma / d**2) * self.K2 @ (x - obs)
+
+        # print('u: ')
+        # print(u)
+
+        return u
+
     # TODO: rename (and/or move to human.py?)
     def get_robot_control(self, x, xr):
         # use LQR gain to get robot avoidance control
