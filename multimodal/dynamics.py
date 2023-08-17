@@ -125,6 +125,12 @@ class LTI():
     def dx(self, x, u, t):
         return self.A @ x + self.B @ u + np.random.multivariate_normal(np.zeros(self.n), self.W, size=(1,)).T
 
+    def f(self, x):
+        return self.A @ x
+    
+    def g(self, x):
+        return self.B
+
     def compute_control(self, x, goal, obstacles = None):
         """
         x: [x, x_dot, y, y_dot]
@@ -139,6 +145,30 @@ class LTI():
             dist = np.linalg.norm(obstacles - x[[0,2]], axis=0)
             # compute avoidance control
             ua = np.zeros((2,1))
+            for i, d in enumerate(dist):
+                # make sure d doesn't get to 0 (for numerical stability)
+                d = max(d, 0.1)
+                obs = np.array([[obstacles[0, i], 0, obstacles[1, i], 0]]).T
+                ua += self.K2 @ (x - obs) * self.gamma / d**2
+            uh += ua
+        
+        # return total control
+        return uh
+    
+    def compute_goal_control(self, x, goal, obstacles = None):
+        """
+        x: [x, x_dot, y, y_dot]
+        goal: [x, x_dot, y, y_dot]
+        """
+        
+        uh = -self.K @ (x - goal)
+
+        if obstacles is not None:
+            # obstacles are given only as x,y coordinates
+            # compute distance to each obstacle
+            ua = np.zeros((2,1))
+            dist = np.linalg.norm(obstacles - x[[0,2]], axis=0)
+            # compute avoidance control
             for i, d in enumerate(dist):
                 # make sure d doesn't get to 0 (for numerical stability)
                 d = max(d, 0.1)

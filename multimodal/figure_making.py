@@ -226,7 +226,7 @@ def plot_front_figure():
     r_dyn = Unicycle(0.2, kv=2, kpsi=1.2)
     dmin = 1
     baseline_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
-    mm_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+    mm_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=10)
     sea_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
 
     # randomly initialize 3 goals
@@ -240,7 +240,8 @@ def plot_front_figure():
 
     # initial positions
     xh0 = np.array([[-7, 1, -7, 0]]).T
-    xr0 = np.array([[-4, -4, 0.5, 3*np.pi/2]]).T
+    # xr0 = np.array([[-4, -4, 0.5, 3*np.pi/2]]).T
+    xr0 = np.array([[-4.5, -4.5, 0.5, 3*np.pi/2]]).T
 
     T = 25 # in seconds
     N = int(T / h_dyn.ts)
@@ -344,8 +345,9 @@ def plot_front_figure():
 
     # sample controls
     # us = np.array([-100, -50, -10, 0, 10, 50, 100])
-    us = np.linspace(-100, 100, 50)
-    U1, U2 = np.meshgrid(us, us)
+    u1s = np.linspace(-100, 100, 100)
+    u2s = np.linspace(-2*np.pi, 2*np.pi, 100)
+    U1, U2 = np.meshgrid(u1s, u2s)
     U = np.vstack((U1.flatten(), U2.flatten()))
     # n_actions = 16
     # angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
@@ -371,26 +373,37 @@ def plot_front_figure():
         xr_nexts.append(r_dyn.step(xr0, u[:,None]))
     xr_nexts = np.array(xr_nexts).squeeze().T
 
-    # plot unsafe next states in red
-    cmap = matplotlib.cm.get_cmap("Reds")
-    norm = matplotlib.colors.Normalize(vmin=-1, vmax=dists[~is_safe].max())
-    for i, u in enumerate(U.T):
-        if is_safe[i]:
-            continue
-        ax.plot([xr0[0,0], xr_nexts[0,i]], [xr0[1,0], xr_nexts[1,i]], color=cmap(norm(dists[i])), alpha=0.1)
-        heading = xr_nexts[3,i]
-        ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), marker=(3, 0, 180*heading/np.pi+30), alpha=0.1, s=100)
+    # # plot unsafe next states in red
+    # cmap = matplotlib.cm.get_cmap("Reds")
+    # norm = matplotlib.colors.Normalize(vmin=-1, vmax=dists[~is_safe].max())
+    # for i, u in enumerate(U.T):
+    #     if is_safe[i]:
+    #         continue
+    #     # ax.plot([xr0[0,0], xr_nexts[0,i]], [xr0[1,0], xr_nexts[1,i]], color=cmap(norm(dists[i])), alpha=0.1)
+    #     heading = xr_nexts[3,i]
+    #     ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), marker=(3, 0, 180*heading/np.pi+30), alpha=0.1, s=100)
+    #     # ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), alpha=0.1, s=100, edgecolors='none')
 
-    # plot safe next states in green
-    cmap = matplotlib.cm.get_cmap("Greens")
-    norm = matplotlib.colors.Normalize(vmin=-1, vmax=dists[is_safe].max())
-    for i, u in enumerate(U.T):
-        if not is_safe[i]:
-            continue
-        ax.plot([xr0[0,0], xr_nexts[0,i]], [xr0[1,0], xr_nexts[1,i]], color=cmap(norm(dists[i])), alpha=0.1)
-        heading = xr_nexts[3,i]
-        ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), marker=(3, 0, 180*heading/np.pi+30), alpha=0.1, s=100)
+    # # plot safe next states in green
+    # cmap = matplotlib.cm.get_cmap("Greens")
+    # norm = matplotlib.colors.Normalize(vmin=-5, vmax=dists[is_safe].max())
+    # for i, u in enumerate(U.T):
+    #     if not is_safe[i]:
+    #         continue
+    #     # ax.plot([xr0[0,0], xr_nexts[0,i]], [xr0[1,0], xr_nexts[1,i]], color=cmap(norm(dists[i])), alpha=0.1)
+    #     heading = xr_nexts[3,i]
+    #     ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), marker=(3, 0, 180*heading/np.pi+30), alpha=0.1, s=100)
+    #     # ax.scatter(xr_nexts[0,i], xr_nexts[1,i], color=cmap(norm(dists[i])), alpha=1, s=100, edgecolors='none')
+
+    unsafe_nexts = xr_nexts[:,~is_safe]
+    ax.scatter(unsafe_nexts[0], unsafe_nexts[1], c=dists[~is_safe], cmap="Reds", vmin=-5, vmax=dists[~is_safe].max(), alpha=0.05, s=100, edgecolors='none')
+
+    safe_nexts = xr_nexts[:,is_safe]
+    ax.scatter(safe_nexts[0], safe_nexts[1], c=dists[is_safe], cmap="Greens", vmin=-5, vmax=dists[is_safe].max(), alpha=0.05, s=100, edgecolors='none')
     
+    heading = xr0[3]
+    ax.scatter(xr0[0], xr0[1], c="darkred", marker=(3, 0, 180*heading/np.pi+30), s=100)
+
     ax.set_aspect('equal', adjustable='box')
     ax.set_xlim(-10, 10)
     ax.set_ylim(-10, 10)
@@ -527,7 +540,7 @@ def plot_traj():
     # plt.show()
 
 if __name__ == "__main__":
-    # plot_control_space()
+    plot_control_space()
     # plot_bayes_inf()
     # plot_front_figure()
-    plot_traj()
+    # plot_traj()
