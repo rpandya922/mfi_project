@@ -584,7 +584,7 @@ def create_labels(all_xh_traj, all_xr_traj, all_goals_reached, goal_probs, goals
 
     return input_traj, robot_future, input_goals, labels
 
-def create_dataset(n_init_cond=200, branching=True, n_traj=10):
+def create_dataset(n_init_cond=200, branching=True, n_traj=10, ts=0.1):
     # generate n_init_cond initial conditions and find goal_probs for each
 
     # saving raw data
@@ -597,7 +597,6 @@ def create_dataset(n_init_cond=200, branching=True, n_traj=10):
     xr_hist = []
     for i in tqdm(range(n_init_cond)):
         # generate initial conditions
-        ts = 0.05
         xh0 = np.random.uniform(-10, 10, (4, 1))
         xh0[[1,3]] = 0
         xr0 = np.random.uniform(-10, 10, (4, 1))
@@ -691,7 +690,7 @@ def process_and_save_data(raw_data_path, processed_data_path, history=5, horizon
         pickle.dump({"input_traj": torch.stack(input_traj), "robot_future": torch.stack(robot_future), "input_goals": torch.stack(input_goals), "labels": torch.stack(labels)}, f)
     print(f"saved processed data to {processed_data_path}")
 
-def plot_model_pred(model_path, horizon=20, hidden_size=128, num_layers=2, hist_feats=8, plan_feats=4, feats=False, stats_file=None):
+def plot_model_pred(model_path, horizon=20, hidden_size=128, num_layers=2, hist_feats=8, plan_feats=4, feats=False, stats_file=None, ts=0.1):
     # load model
     model = create_model(horizon_len=horizon, hidden_size=hidden_size, num_layers=num_layers, hist_feats=hist_feats, plan_feats=plan_feats)
     model.load_state_dict(torch.load(model_path, map_location=device))
@@ -703,7 +702,6 @@ def plot_model_pred(model_path, horizon=20, hidden_size=128, num_layers=2, hist_
         stats = None
 
     # generate initial conditions
-    ts = 0.05
     xh0 = np.random.uniform(-10, 10, (4, 1))
     xh0[[1,3]] = 0
     xr0 = np.random.uniform(-10, 10, (4, 1))
@@ -861,7 +859,7 @@ def visualize_dataset(raw_data_path):
 
 if __name__ == "__main__":
     # # save_dataset()
-    np.random.seed(2) # normal test seed
+    # np.random.seed(2) # normal test seed
     # np.random.seed(1)
     # np.random.seed(0)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
@@ -869,10 +867,10 @@ if __name__ == "__main__":
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-23/model_12.pt"
     # stats_file = "./data/prob_pred/checkpoints/2023-06-23/bayes_prob_branching_processed_feats_stats.pkl"
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt"
-    stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl"
-    plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
-    plt.show()
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt"
+    # stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl"
+    # plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
+    # plt.show()
 
     # save_dataset()
     # create_dataset(n_init_cond=1, branching=True)
@@ -893,6 +891,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    # raw_data_path = "./data/prob_pred/bayes_prob_branching_val.pkl"
-    # processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats.h5"
-    # save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_ts01.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01.h5"
+    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=500, branching=True, n_traj=10, history=5, horizon=20)
