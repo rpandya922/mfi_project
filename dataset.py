@@ -156,6 +156,9 @@ class ProbSimTrajDataset(Dataset):
                     # save stats
                     with open(stats_file, "wb") as f:
                         pickle.dump(stats, f)
+                    print(f"saved new stats file to {stats_file}")
+                else:
+                    print(f"loading stats file from {stats_file}")
                 
                 # load stats
                 with open(stats_file, "rb") as f:
