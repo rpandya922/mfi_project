@@ -16,11 +16,11 @@ def process_data(filepath):
             # compute number of times human's goal changed
             diffs = np.diff(h_goal_idxs, n=1)
             num_goal_changes = np.count_nonzero(diffs)
-            print(num_goal_changes)
+            # TODO: print index of goal change
+            change_idx = np.where(diffs != 0)[0]
+            print(num_goal_changes, len(h_goal_idxs), change_idx)
         print()
 
 if __name__ == "__main__":
-    filepath = "./data/cbp_sim/cbp_compare_20230817-175956.pkl"
+    filepath = "./data/cbp_sim/cbp_compare_20230821-104611.pkl"
     process_data(filepath)
-
-        

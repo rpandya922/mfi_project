@@ -861,16 +861,19 @@ if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2) # normal test seed
     # np.random.seed(1)
-    # np.random.seed(0)
+    np.random.seed(0)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-23/model_12.pt"
     # stats_file = "./data/prob_pred/checkpoints/2023-06-23/bayes_prob_branching_processed_feats_stats.pkl"
-    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt"
-    # stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl"
-    # plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
-    # plt.show()
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt" # working ts=0.05
+    # stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl" # working ts=0.05
+
+    stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_stats.pkl" # working ts=0.1
+    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+    plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
+    plt.show()
 
     # save_dataset()
     # create_dataset(n_init_cond=1, branching=True)
@@ -891,6 +894,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_val_ts01.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats_ts01.h5"
-    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)
+    # raw_data_path = "./data/prob_pred/bayes_prob_branching_val_ts01.pkl"
+    # processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats_ts01.h5"
+    # save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)

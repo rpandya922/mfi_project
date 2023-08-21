@@ -40,13 +40,13 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
     xh0[[1,3]] = 0
     xr0 = np.random.uniform(-10, 10, (4, 1))
     xr0[[1,3]] = 0
-    goals = np.random.uniform(-10, 10, (4, 3))
+    goals = np.random.uniform(-10, 10, (4, 5))
     goals[[1,3]] = 0
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
 
     # create human and robot objects
-    # W = np.diag([0.0, 0.7, 0.0, 0.7])
-    W = np.diag([0.0, 0.0, 0.0, 0.0])
+    W = np.diag([0.0, 0.7, 0.0, 0.7])
+    # W = np.diag([0.0, 0.0, 0.0, 0.0])
     h_dynamics = DIDynamics(ts=ts, W=W)
     r_dynamics = DIDynamics(ts=ts)
 
@@ -54,7 +54,8 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
     human = UncertainHuman(xh0, h_dynamics, goals, h_belief, gamma=5, mode=human_type)
     robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
     r_belief = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
-    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
+    # r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0005)
+    r_belief_nominal = CBPEstimator(thetas=goals, dynamics=h_dynamics, beta=0.0001)
     # r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[5e-6, 5e-5, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
 
@@ -84,13 +85,17 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
         ax.set_aspect('equal', adjustable='box')
         h_belief_ax = axes[1]
         r_belief_ax = axes[2]
-        goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
+        # goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
+        goal_colors = ["#3A637B", "#C4A46B", "#FF5A00", "green", "purple"]
         h_goal_ax = axes[3]
         r_beta_ax = axes[4]
         r_likelihoods_ax = axes[5]
     
     # TODO: change sim to continue adding goals 
     robot_wait_time = 5
+    h_goal_reached = False
+    r_goal_reached = False
+    # robot_wait_time = 0
     for idx in range(N):
         # get human and robot controls
         uh = human.get_u(robot.x)
@@ -120,7 +125,7 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
             # generate safe trajectory for robot
             safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
             # if robot is sufficiently close to its goal, just move straight to the goal without considering human
-            if np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1.5:
+            if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1.5) or h_goal_reached:
                 ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
             else:
                 ur = ur_traj[:,[0]]
@@ -205,20 +210,17 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
             ax.set_ylim(-10, 10)
 
             h_belief_ax.clear()
-            h_belief_ax.plot(h_beliefs[:,0], label="P(g0)", c=goal_colors[0])
-            h_belief_ax.plot(h_beliefs[:,1], label="P(g1)", c=goal_colors[1])
-            h_belief_ax.plot(h_beliefs[:,2], label="P(g2)", c=goal_colors[2])
+            for goal_idx in range(h_beliefs.shape[1]):
+                h_belief_ax.plot(h_beliefs[:,goal_idx], label=f"P(g{goal_idx})", c=goal_colors[goal_idx])
             h_belief_ax.set_xlabel("h belief of r")
             h_belief_ax.legend()
 
             r_belief_ax.clear()
-            r_belief_ax.plot(r_beliefs[:,0], label="P(g0)", c=goal_colors[0])
-            r_belief_ax.plot(r_beliefs[:,1], label="P(g1)", c=goal_colors[1])
-            r_belief_ax.plot(r_beliefs[:,2], label="P(g2)", c=goal_colors[2])
+            for goal_idx in range(r_beliefs.shape[1]):
+                r_belief_ax.plot(r_beliefs[:,goal_idx], label=f"P(g{goal_idx})", c=goal_colors[goal_idx])
             # plot nomninal belief with dashed lines
-            r_belief_ax.plot(r_beliefs_nominal[:,0], c=goal_colors[0], linestyle="--")
-            r_belief_ax.plot(r_beliefs_nominal[:,1], c=goal_colors[1], linestyle="--")
-            r_belief_ax.plot(r_beliefs_nominal[:,2], c=goal_colors[2], linestyle="--")
+            for goal_idx in range(r_beliefs_nominal.shape[1]):
+                r_belief_ax.plot(r_beliefs_nominal[:,goal_idx], c=goal_colors[goal_idx], linestyle="--")
             r_belief_ax.set_xlabel("r belief of h")
             r_belief_ax.legend()
 
@@ -263,7 +265,9 @@ def run_simulations(filepath="./data/sim_stats.pkl", n_traj=10):
         pickle.dump(all_stats, f)
 
 if __name__ == "__main__":
-    # run_simulation(robot_type="baseline")
+    # np.random.seed(0)
+    # run_simulation(robot_type="baseline_belief", human_type="moving", plot=True)
+    # run_simulation(robot_type="cbp", human_type="moving", plot=True)
     filepath = f"./data/cbp_sim/cbp_compare_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
-    n_traj = 10
+    n_traj = 1000
     run_simulations(filepath, n_traj=n_traj)
