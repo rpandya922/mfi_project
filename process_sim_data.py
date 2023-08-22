@@ -6,21 +6,38 @@ def process_data(filepath):
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     
-    robot_types = ["cbp", "baseline", "baseline_belief"]
+    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
+    all_stats = {robot_type: {} for robot_type in robot_types}
     for robot_type in robot_types:
         robot_data = data[robot_type]
         print(robot_type)
+        n_changed = 0
+        all_goal_changes = []
+        traj_lens = []
         for idx, trial_data in enumerate(robot_data):
             h_goal_idxs = trial_data["h_goal_idxs"]
-            # print(h_goal_idxs[0] == h_goal_idxs[-1], len(h_goal_idxs))
             # compute number of times human's goal changed
             diffs = np.diff(h_goal_idxs, n=1)
             num_goal_changes = np.count_nonzero(diffs)
-            # TODO: print index of goal change
             change_idx = np.where(diffs != 0)[0]
-            print(num_goal_changes, len(h_goal_idxs), change_idx)
+            if len(change_idx) > 0:
+                n_changed += 1
+            traj_lens.append(len(h_goal_idxs))
+            all_goal_changes.append(num_goal_changes)
+        print(n_changed / len(robot_data))
+        print(np.mean(all_goal_changes), np.std(all_goal_changes))
+        print(np.mean(traj_lens), np.std(traj_lens))
         print()
+        all_stats[robot_type]["num_goal_changes"] = all_goal_changes
+    
+    fig, ax = plt.subplots()
+    ax.boxplot([all_stats[robot_type]["num_goal_changes"] for robot_type in robot_types], showmeans=True)
+    ax.set_xticklabels(robot_types)
+    ax.set_ylabel("Number of Goal Changes")
+    plt.show()
 
 if __name__ == "__main__":
-    filepath = "./data/cbp_sim/cbp_compare_20230821-104611.pkl"
+    # filepath = "./data/cbp_sim/cbp_compare_20230821-105615.pkl" # large results file with 1000 trajectories per controller (5 goals)
+    # filepath = "./data/cbp_sim/cbp_compare_20230822-104542.pkl" # testing 3 goals again
+    filepath = "./data/cbp_sim/cbp_compare_20230822-130153.pkl" # testing w/ NN CBP too
     process_data(filepath)
