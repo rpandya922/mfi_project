@@ -111,9 +111,11 @@ def check_safety(robot, human, belief_h, horizon, goals, r_goal, ur_traj, plot=F
         xh3 = human3.step(uh3)
         xr1 = robot1.step(ur1)
 
-        if np.abs((xh1[0] - xr1[0]) ** 2 + (xh1[2] - xr1[2]) ** 2) < sigma ** 2 or np.abs(
-                (xh2[0] - xr1[0]) ** 2 + (xh2[2] - xr1[2]) ** 2) < sigma ** 2 or np.abs(
-            (xh3[0] - xr1[0]) ** 2 + (xh3[2] - xr1[2]) ** 2) < sigma ** 2:
+        thres = 0.05 # risk tolerance
+
+        if (np.abs((xh1[0] - xr1[0]) ** 2 + (xh1[2] - xr1[2]) ** 2) < sigma ** 2 and p1 > thres) or (np.abs(
+                (xh2[0] - xr1[0]) ** 2 + (xh2[2] - xr1[2]) ** 2) < sigma ** 2 and p2 > thres) or (np.abs(
+                (xh3[0] - xr1[0]) ** 2 + (xh3[2] - xr1[2]) ** 2) < sigma ** 2 and p3 > thres):
             safety = False
             # print('safety violated at step ' + str(i))
 
@@ -261,16 +263,16 @@ def generate_trajectories(robot, human, belief_h, horizon, goals, r_goal, xh_his
             sigma0 = 0.1  # initial std for uncertainty
             sigma = np.sqrt(i) * sigma0
             ur1 = robot1.dynamics.get_goal_control(robot1.x, robot1.goal) + robot1.dynamics.get_potential_field_control(
-                robot1.x, obs[k].reshape(-1, 1)) + 1 * robot1.dynamics.get_potential_field_control(robot1.x, human1.x,
-                                                                                                   sigma) + 1 * robot1.dynamics.get_potential_field_control(
-                robot1.x, human2.x, sigma) + 1 * robot1.dynamics.get_potential_field_control(robot1.x, human3.x, sigma)
+                robot1.x, obs[k].reshape(-1, 1)) + p1 * robot1.dynamics.get_potential_field_control(robot1.x, human1.x,
+                                                                                                   sigma) + p2 * robot1.dynamics.get_potential_field_control(
+                robot1.x, human2.x, sigma) + p3 * robot1.dynamics.get_potential_field_control(robot1.x, human3.x, sigma)
 
             if k == n_obs - 1:
                 ur1 = robot1.dynamics.get_goal_control(robot1.x,
-                                                       robot1.goal) + 1 * robot1.dynamics.get_potential_field_control(robot1.x,
+                                                       robot1.goal) + p1 * robot1.dynamics.get_potential_field_control(robot1.x,
                                                                                                        human1.x,
-                                                                                                       sigma) + 1 * robot1.dynamics.get_potential_field_control(
-                    robot1.x, human2.x, sigma) + 1 * robot1.dynamics.get_potential_field_control(robot1.x, human3.x,
+                                                                                                       sigma) + p2 * robot1.dynamics.get_potential_field_control(
+                    robot1.x, human2.x, sigma) + p3 * robot1.dynamics.get_potential_field_control(robot1.x, human3.x,
                                                                                                  sigma)
 
             # if i > horizon - 30:  # only use goal control after horizon-30 time steps to remove steady state error

@@ -144,6 +144,35 @@ def get_marker_center(frame):
         return marker_center
     return None
 
+def get_homography(frame):
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    aruco_dict = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_4X4_50)
+    parameters = cv.aruco.DetectorParameters()
+    detector = cv.aruco.ArucoDetector(aruco_dict, parameters)
+    corners, ids, rejectedImgPoints = detector.detectMarkers(gray)
+    frame_markers = cv.aruco.drawDetectedMarkers(frame.copy(), corners, ids)
+
+    id_to_xy = {1: np.array([-10, 10]), 2: np.array([10, 10]), 3: np.array([-10, -10]), 4: np.array([10, -10])}
+
+    print(ids)
+
+    if (ids is not None) and (1 in ids) and (2 in ids) and (3 in ids) and (4 in ids):
+        source_xy = []
+        dest_xy = []
+        for idx, marker_id in enumerate(ids):
+            marker_center = np.mean(corners[idx][0], axis=0)
+            xy = id_to_xy[marker_id[0]]
+            source_xy.append(marker_center)
+            dest_xy.append(xy)
+        H, _ = cv.findHomography(np.array(source_xy), np.array(dest_xy))
+        h, w = frame.shape[:2]
+        frame_markers = cv.warpPerspective(frame, H, (w, h))
+        cv.imshow('RealSense', frame_markers)
+        cv.waitKey(1)
+
+        import ipdb; ipdb.set_trace()
+        return H
+
 def get_h_pos(marker_center, top_right, bottom_right, bottom_left, top_left):
     # map pixel coordinates to x,y coordinates
     x = marker_center[0]
@@ -217,7 +246,7 @@ def bayes_inf_rs2():
     loop_idx = 0
     try:
         while True:
-            # Wait for a coherent pair of frames: depth and color
+            # Wait for a coherent color frame
             frames = pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
             if not color_frame:
@@ -225,6 +254,8 @@ def bayes_inf_rs2():
 
             # Convert images to numpy arrays
             frame = np.asanyarray(color_frame.get_data())
+
+            # get_homography(frame)
 
             marker_center = get_marker_center(frame)
 
@@ -277,9 +308,9 @@ def bayes_inf_rs2():
             plt.pause(0.001)
 
             # Show images
-            # cv.namedWindow('RealSense', cv.WINDOW_AUTOSIZE)
-            # cv.imshow('RealSense', frame)
-            # cv.waitKey(1)
+            cv.namedWindow('RealSense', cv.WINDOW_AUTOSIZE)
+            cv.imshow('RealSense', frame)
+            cv.waitKey(1)
 
             loop_idx += 1
     finally:

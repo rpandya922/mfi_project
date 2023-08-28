@@ -377,7 +377,7 @@ def run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True):
                 xr_hist = xr_traj[:, idx - k_hist:idx]
             
             # generate safe trajectory for robot given this goal
-            safety, ur_traj, distance, new_belief, obs_loc = generate_trajectories(robot, human, r_belief_nominal.belief, traj_horizon, goals, r_goal, xh_hist, xr_hist, model, stats_file=None, stats=stats, verbose=False, plot=False)
+            safety, ur_traj, distance, new_belief, obs_loc = generate_trajectories(robot, human, r_belief_nominal.belief, traj_horizon, goals, goal, xh_hist, xr_hist, model, stats_file=None, stats=stats, verbose=False, plot=False)
 
             posts.append(new_belief)
             ur_trajs.append(ur_traj)
@@ -509,10 +509,11 @@ def run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True):
     return data
 
 def run_simulations(filepath="./data/sim_stats.pkl", n_traj=10):
-    # robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
-    robot_types = ["cbp_nn"]
+    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
+    # robot_types = ["cbp_nn"]
     all_stats = {robot_type: [] for robot_type in robot_types}
     for robot_type in robot_types:
+        # TODO: standardize initial conditions better (since traj len may change, this way doesn't work)
         np.random.seed(0)
         for i in tqdm(range(n_traj)):
             if robot_type == "cbp_nn":
@@ -532,5 +533,5 @@ if __name__ == "__main__":
     # run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True)
 
     filepath = f"./data/cbp_sim/cbp_compare_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
-    n_traj = 1000
+    n_traj = 10
     run_simulations(filepath, n_traj=n_traj)
