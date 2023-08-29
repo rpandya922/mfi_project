@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Arc
 import cv2 as cv
 import pyrealsense2 as rs
 
@@ -186,6 +187,16 @@ def get_h_pos(marker_center, top_right, bottom_right, bottom_left, top_left):
     xh[0] = (y - top_right[1]) / (bottom_left[1] - top_right[1]) * 22 - 11
     return -xh
 
+def min_goal_dists(goals):
+    # return the minimum distance between any pair of goals
+    dists = []
+    for i in range(goals.shape[1]):
+        for j in range(goals.shape[1]):
+            if i == j:
+                continue
+            dists.append(np.linalg.norm(goals[:,i] - goals[:,j]))
+    return np.min(dists)
+
 def bayes_inf_rs2(robot_type="cbp"):
     """
     Bayesian inference on human wrist position using realsense camera
@@ -222,19 +233,23 @@ def bayes_inf_rs2(robot_type="cbp"):
     ts = 0.1
     traj_horizon = 20
     n_goals = 3
+    plot_mode = "debug" # alternatively "study"
 
-    xr0 = np.random.uniform(-10, 10, (4, 1))
-    xr0[[1,3]] = 0
+    xr = np.random.uniform(-10, 10, (4, 1))
+    xr[[1,3]] = 0
     xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
     goals[[1,3],:] = np.zeros((2, 3))
+    while min_goal_dists(goals) < 5:
+        goals = np.random.uniform(size=(4, n_goals))*20 - 10
+        goals[[1,3],:] = np.zeros((2, 3))
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
 
     h_dynamics = HumanWristDynamics(ts)
     r_dynamics = DIDynamics(ts=ts)
 
     human = ARHuman(xh0, h_dynamics, goals)
-    robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
+    robot = Robot(xr, r_dynamics, r_goal, dmin=3)
 
     r_belief = CBPEstimatorAR(thetas=goals, dynamics=h_dynamics, beta=0.5)
     belief_nominal = BayesEstimatorAR(goals, h_dynamics, beta=0.5)
@@ -252,6 +267,7 @@ def bayes_inf_rs2(robot_type="cbp"):
 
     # data storing
     xh_traj = np.zeros((4, 0))
+    xr_traj = np.zeros((4, 0))
     r_beliefs = np.zeros((0, n_goals))
     r_beliefs_cond = np.zeros((n_goals, n_goals, 0))
     beliefs_nominal = np.zeros((0, n_goals))
@@ -267,12 +283,40 @@ def bayes_inf_rs2(robot_type="cbp"):
     beta_belief_ax = axes[2]
     goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
 
+    both_at_goal_count = 0
+
     loop_idx = 0
     try:
         robot_wait_time = 5
         h_goal_reached = False
         r_goal_reached = False
         while True:
+
+            # check if both agents have waited at their goals for long enough. if so, resample 2 new goals and reset beliefs
+            if both_at_goal_count >= 10:
+                # resample goals
+                # find goal human is at
+                h_goal_idx = np.argmin(np.linalg.norm(xh - goals, axis=0))
+                r_goal_idx = np.argmin(np.linalg.norm(xr - goals, axis=0))
+                
+                new_goals = np.random.uniform(size=(4, 2))*20 - 10
+                new_goals[[1,3],:] = np.zeros((2, 2))
+                goals[:,[h_goal_idx, r_goal_idx]] = new_goals
+                while min_goal_dists(goals) < 5:
+                    new_goals = np.random.uniform(size=(4, 2))*20 - 10
+                    new_goals[[1,3],:] = np.zeros((2, 2))
+                    goals[:,[h_goal_idx, r_goal_idx]] = new_goals
+                
+                both_at_goal_count = 0
+
+                # reset beliefs
+                r_belief.belief = np.ones(n_goals) / n_goals
+                r_belief.thetas = goals
+                belief_nominal.belief = np.ones(n_goals) / n_goals
+                belief_nominal.thetas = goals
+                beta_belief.belief = np.ones((n_goals, len(beta_belief.betas))) / (n_goals*len(beta_belief.betas))
+                beta_belief.thetas = goals
+
             # Wait for a coherent color frame
             frames = pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
@@ -309,6 +353,11 @@ def bayes_inf_rs2(robot_type="cbp"):
                 human_waiting = True
             is_human_waiting.append(human_waiting)
             # print(human_waiting)
+
+            # TODO: add "influence" goal selection objective when robot is not waiting
+            influence_human = False
+            if human_waiting:
+                influence_human = True
 
             if not human_waiting and robot_wait_time > 0 and robot_type == "cbp":
                 ur = np.zeros((2,1))
@@ -355,12 +404,30 @@ def bayes_inf_rs2(robot_type="cbp"):
 
             robot.goal = goals[:,[goal_idx]]
 
+            # update robot's belief
+            r_belief_post = posts[goal_idx]
+            r_belief.belief = r_belief_post
+
             # step dynamics forward
             xh = h_dynamics.step(xh, uh)
             human.x = xh
+            xr = robot.step(ur)
+
+            # check how long human and robot have been at goals
+            h_at_goal = False
+            r_at_goal = False
+            if np.linalg.norm(goals - xh, axis=0).min() <= 0.5:
+                h_at_goal = True
+            if np.linalg.norm(goals - xr, axis=0).min() <= 0.5:
+                r_at_goal = True
+            if h_at_goal and r_at_goal:
+                both_at_goal_count += 1
+            else:
+                both_at_goal_count = 0
 
             # save data
             xh_traj = np.hstack((xh_traj, xh))
+            xr_traj = np.hstack((xr_traj, xr))
             r_beliefs = np.vstack((r_beliefs, r_belief.belief))
             beliefs_nominal = np.vstack((beliefs_nominal, belief_nominal.belief))
             beliefs_beta = np.dstack((beliefs_beta, beta_belief.belief))
@@ -373,14 +440,30 @@ def bayes_inf_rs2(robot_type="cbp"):
                 belief_nominal.actions = belief_nominal.actions_wo_zero
             beta_belief.actions = belief_nominal.actions
 
-            # TODO: plot
             ax.cla()
-            overlay_timesteps(ax, xh_traj, [], n_steps=loop_idx)
+            overlay_timesteps(ax, xh_traj, xr_traj, n_steps=loop_idx)
             ax.scatter(xh[0], xh[2], c="blue", s=100)
+            ax.scatter(xr[0], xr[2], c="red", s=100)
             ax.scatter(goals[0], goals[2], c=goal_colors)
             ax.set_xlim(-11, 11)
             ax.set_ylim(-11, 11)
             ax.set_aspect('equal')
+
+            # plot circle indicating percent time waited at goal
+            if both_at_goal_count > 0:
+                # find goal human is at
+                h_goal_idx = np.argmin(np.linalg.norm(xh - goals, axis=0))
+                circle_xy = goals[:,[h_goal_idx]][[0,2]]
+                r_goal_idx = np.argmin(np.linalg.norm(xr - goals, axis=0))
+                r_circle_xy = goals[:,[r_goal_idx]][[0,2]]
+                radius = 1
+                theta1 = 90 # start circle at top
+                theta2 = (360)*(both_at_goal_count / 10) + 90
+                theta2 = min(360+90, theta2)
+                arc = Arc(circle_xy.flatten(), radius*2, radius*2, color='g', lw=3, theta1=theta1, theta2=theta2)
+                ax.add_patch(arc)
+                arc = Arc(r_circle_xy.flatten(), radius*2, radius*2, color='g', lw=3, theta1=theta1, theta2=theta2)
+                ax.add_patch(arc)
 
             belief_ax.cla()
             # plot nominal belief in dotted lines
