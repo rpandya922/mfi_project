@@ -33,7 +33,7 @@ class HumanWristDynamics(object):
         # compute unit vector in this direction
         diff_unit = diff / np.linalg.norm(diff)
         # action is scaled version of unit vector
-        return 0.1*diff_unit
+        return 2.0*diff_unit
 
     def get_robot_control(self, x, xr):
         return np.zeros((2,1))
