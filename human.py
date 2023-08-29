@@ -56,6 +56,13 @@ class Human(BaseAgent):
             return Human(self.x, self.dynamics, self.goals, self.goal)
         return Human(self.x, self.dynamics, self.goals)
 
+class ARHuman(Human):
+    def __init__(self, x0, dynamics : Dynamics, goals, gamma=1):
+        super(ARHuman, self).__init__(x0, dynamics, goals, gamma=gamma)
+
+    def copy(self):
+        return ARHuman(self.x, self.dynamics, self.goals, self.gamma)
+
 class RuleBasedHuman(Human):
     def __init__(self, x0, dynamics : Dynamics, goals, goal=None, gamma=1):
         super().__init__(x0, dynamics, goals, goal, gamma)

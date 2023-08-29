@@ -22,8 +22,19 @@ class HumanWristDynamics(object):
                            [0, 1],
                            [0, 0]])
         self.gamma = 0 # no collision avoidance control
+        self.n = 4
+        self.m = 2
+
     def step(self, x, u):
         return self.A @ x + self.B @ u
+    
+    def get_goal_control(self, x, goal):
+        diff = (goal - x)[[0,2]]
+        # compute unit vector in this direction
+        diff_unit = diff / np.linalg.norm(diff)
+        # action is scaled version of unit vector
+        return 0.1*diff_unit
+
     def get_robot_control(self, x, xr):
         return np.zeros((2,1))
 

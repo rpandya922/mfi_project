@@ -108,6 +108,111 @@ class CBPEstimator():
     def copy(self):
         return CBPEstimator(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
 
+class CBPEstimatorAR():
+    def __init__(self, thetas, dynamics, prior=None, beta=0.7):
+        self.thetas = thetas # column vectors
+        self.dynamics = dynamics
+        self.beta = beta
+
+        n_theta = thetas.shape[1]
+        if prior is None:
+            prior = np.ones(n_theta) / n_theta
+        else:
+            assert len(prior) == n_theta
+        self.belief = prior
+
+        # define possible actions (for the purpose of inference, we discretize the actual action taken by the agent)
+        n_actions = 8
+        angles = np.linspace(0, 2 * np.pi, num=(n_actions + 1))[:-1]
+        all_actions = []
+        for r in [1]:
+            actions = np.array([r * np.cos(angles), r * np.sin(angles)]).T
+            all_actions.append(actions)
+        # all_actions.append(np.array([0, 0]).T)
+        self.actions_wo_zero = np.vstack(all_actions)
+
+        actions_w_zero = np.vstack((self.actions_wo_zero, np.zeros((1,2))))
+        self.actions_w_zero = actions_w_zero
+
+        self.actions = self.actions_wo_zero
+    
+    def project_action(self, action):
+        # passed-in action will be a column vector
+        a = action.flatten()
+        # find closest action
+        dists = np.linalg.norm(self.actions - a, axis=1)
+        a_idx = np.argmin(dists)
+
+        return self.actions[a_idx], a_idx
+
+    def score_thetas(self, theta1, theta2, theta_prior, state, w=2):
+        """
+        generally, theta1 is the considered new goal for the human, theta2 is the robot's chosen goal, and theta_prior is the human's current goal (or our consideration of it)
+        """
+        # we want to model the behavior that the human chooses the goal closest to them that's not the same as the robot's goal
+        # high score -> high interaction, so we want a low score for theta1 being close to state 
+        s = 2*np.linalg.norm(theta1 - state) - np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
+        # NOTE: converges to original belief as w -> inf (this means we think human won't be very affected by robot's choice)
+        # s = -np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
+        return s
+    
+    def weight_by_score(self, prior_belief, theta_r, state, beta=1):
+        theta_r_idx = np.argmin(np.linalg.norm(self.thetas - theta_r, axis=0))
+        belief_post = np.zeros(self.thetas.shape[1])
+        for i in range(self.thetas.shape[1]):
+            # don't directly need theta_post value, just index (values computed for all thetas)
+            # theta_post = self.thetas[:,[i]]
+            likelihood = np.zeros(self.thetas.shape[1])
+            for j in range(self.thetas.shape[1]):
+                theta_prior = self.thetas[:,[j]] # don't need this, just index
+                scores = [self.score_thetas(self.thetas[:,[k]], theta_r, theta_prior, state) for k in range(self.thetas.shape[1])]
+                # scores = self.scores[:,theta_r_idx,j]
+                # assert np.allclose(scores, scores2) # passes
+                p_post_given_prior = softmax(-beta * np.array(scores))[i]
+                likelihood[j] = p_post_given_prior # * prior_belief[j]
+            belief_post[i] = likelihood @ prior_belief # np.sum(likelihood)
+
+        return belief_post
+
+    def update_belief(self, state, action, return_likelihood=False):
+        # project chosen action to discrete set
+        _, a_idx = self.project_action(action)
+
+        # compute the next state if each potential action was chosen
+        next_states = np.array([self.dynamics.step(state, a[:,None]) for a in self.actions]) # dynamics.step expects column vectors
+        # compute the reward for choosing each action as negative distance traveled
+        rs = np.array([-np.linalg.norm(state - s) for s in next_states])[:,None]
+
+        # assume optimal trajectory is defined by straight line towards goal, so reward is negative distance from goal
+        opt_rewards = np.linalg.norm((next_states - self.thetas[None,:,:]), axis=1)
+
+        # compute Q-values
+        Q_vals = rs - opt_rewards
+
+        # testing overflow
+        # xis = self.beta * Q_vals
+        # prob_action = softmax(xis - np.max(xis, axis=0), axis=0)
+
+        # compute probability of choosing each action (normalized over all actions for one goal)
+        prob_action = softmax(self.beta * Q_vals, axis=0)
+        # get row corresponding to chosen action (across all goals)
+        y_i = prob_action[a_idx]
+
+        # update belief using likelihood
+        new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
+
+        # set min belief to 1%
+        new_belief[new_belief < 0.01] = 0.01
+
+        if not return_likelihood:
+            return new_belief
+        else:
+            return new_belief, y_i
+
+    def copy(self):
+        return CBPEstimatorAR(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
+
+
 class BetaBayesEstimator():
     def __init__(self, thetas, betas, dynamics, prior=None):
         self.thetas = thetas # column vectors

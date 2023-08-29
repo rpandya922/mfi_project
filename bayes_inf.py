@@ -114,7 +114,7 @@ class BayesEstimatorAR():
         return self.actions[a_idx], a_idx
     
     def update_belief(self, state, action):
-                # project chosen action to discrete set
+        # project chosen action to discrete set
         _, a_idx = self.project_action(action)
 
         # compute the next state if each potential action was chosen

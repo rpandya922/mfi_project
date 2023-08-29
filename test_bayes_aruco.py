@@ -3,10 +3,14 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import pyrealsense2 as rs
 
+from dynamics import DIDynamics
+from robot import Robot
+from human import ARHuman
 from bayes_inf import BayesEstimatorAR
-from cbp_model import BetaBayesEstimatorAR
+from cbp_model import CBPEstimatorAR, BetaBayesEstimatorAR
 from detect_human_aruco import HumanWristDynamics
 from intention_utils import overlay_timesteps
+from generate_path_loop_multiple_obs import generate_trajectory_belief
 
 def test_cv2_cam():
     cap = cv.VideoCapture(0)
@@ -182,7 +186,7 @@ def get_h_pos(marker_center, top_right, bottom_right, bottom_left, top_left):
     xh[0] = (y - top_right[1]) / (bottom_left[1] - top_right[1]) * 22 - 11
     return -xh
 
-def bayes_inf_rs2():
+def bayes_inf_rs2(robot_type="cbp"):
     """
     Bayesian inference on human wrist position using realsense camera
     """
@@ -215,13 +219,28 @@ def bayes_inf_rs2():
 
     # create bayesian estimator
     np.random.seed(0)
-    h_dynamics = HumanWristDynamics(0.1)
+    ts = 0.1
+    traj_horizon = 20
     n_goals = 3
+
+    xr0 = np.random.uniform(-10, 10, (4, 1))
+    xr0[[1,3]] = 0
+    xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
     goals[[1,3],:] = np.zeros((2, 3))
-    belief = BayesEstimatorAR(goals, h_dynamics, beta=0.5)
-    beta_belief = BetaBayesEstimatorAR(goals, betas=[1e-3, 1e-2, 1e-1, 1e0], dynamics=h_dynamics)
-    beta_belief.actions = belief.actions
+    r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
+
+    h_dynamics = HumanWristDynamics(ts)
+    r_dynamics = DIDynamics(ts=ts)
+
+    human = ARHuman(xh0, h_dynamics, goals)
+    robot = Robot(xr0, r_dynamics, r_goal, dmin=3)
+
+    r_belief = CBPEstimatorAR(thetas=goals, dynamics=h_dynamics, beta=0.5)
+    belief_nominal = BayesEstimatorAR(goals, h_dynamics, beta=0.5)
+    # beta_belief = BetaBayesEstimatorAR(goals, betas=[1e-3, 1e-2, 1e-1, 1e0], dynamics=h_dynamics)
+    beta_belief = BetaBayesEstimatorAR(goals, betas=[1e-2, 1e0], dynamics=h_dynamics)
+    beta_belief.actions = belief_nominal.actions
 
     xh = None
 
@@ -233,8 +252,13 @@ def bayes_inf_rs2():
 
     # data storing
     xh_traj = np.zeros((4, 0))
-    beliefs = np.zeros((0, n_goals))
+    r_beliefs = np.zeros((0, n_goals))
+    r_beliefs_cond = np.zeros((n_goals, n_goals, 0))
+    beliefs_nominal = np.zeros((0, n_goals))
     beliefs_beta = np.zeros((beta_belief.belief.shape[0], beta_belief.belief.shape[1], 0))
+    r_goal_idxs = []
+    is_robot_waiting = []
+    is_human_waiting = []
 
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 7))
     axes = axes.flatten()
@@ -245,6 +269,9 @@ def bayes_inf_rs2():
 
     loop_idx = 0
     try:
+        robot_wait_time = 5
+        h_goal_reached = False
+        r_goal_reached = False
         while True:
             # Wait for a coherent color frame
             frames = pipeline.wait_for_frames()
@@ -263,31 +290,90 @@ def bayes_inf_rs2():
                 xh_next = get_h_pos(marker_center, top_right, bottom_right, bottom_left, top_left)
                 if xh is None:
                     xh = np.array([xh_next[0], [0], xh_next[1], [0]])
+                    human.x = xh
                 uh = (xh_next - xh[[0,2]])
             else:
                 if xh is None:
                     continue
-                uh = np.zeros((2,1))
+                uh = np.zeros((2,1)) + 0.05*(2*np.random.rand(2,1)-1)
             
             # update belief
             if np.linalg.norm(uh) > 1e-4: # only if action is non-zero            
-                belief.update_belief(xh, uh)
+                r_belief_prior = belief_nominal.update_belief(xh, uh)
                 beta_belief.update_belief(xh, uh)
+            else:
+                r_belief_prior = belief_nominal.belief
+
+            human_waiting = False
+            if (beta_belief.betas[np.argmax(beta_belief.belief, axis=1)] < 1e0).all():
+                human_waiting = True
+            is_human_waiting.append(human_waiting)
+            # print(human_waiting)
+
+            if not human_waiting and robot_wait_time > 0 and robot_type == "cbp":
+                ur = np.zeros((2,1))
+                obs_loc = None
+                robot_wait_time -= 1
+                is_robot_waiting.append(True)
+            else:
+                robot_wait_time = 0 # make sure robot commits to waiting only at the start
+                # generate safe trajectory for robot
+                safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
+                # if robot is sufficiently close to its goal, just move straight to the goal without considering human
+                if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1.5) or h_goal_reached:
+                    ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+                else:
+                    ur = ur_traj[:,[0]]
+                is_robot_waiting.append(False)
+
+            xh_next = human.dynamics.A @ human.x + human.dynamics.B @ uh
+            # loop through goals and compute belief update for each potential robot goal
+            posts = []
+            for goal_idx in range(goals.shape[1]):
+                goal = goals[:,[goal_idx]]
+                # compute CBP belief update
+                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5)
+                posts.append(r_belief_post)
+            
+            # pick goal with highest probability on human's most likely goal
+            goal_scores = []
+            for goal_idx in range(goals.shape[1]):
+                p = posts[goal_idx]
+                h_belief_score = p[np.argmax(r_belief_prior)]
+                goal_change_score = -0.01*np.linalg.norm(goals[:,[goal_idx]] - robot.goal)
+                # goal_change_score = 0
+                goal_scores.append(h_belief_score + goal_change_score)
+            goal_idx = np.argmax(goal_scores)
+
+            if robot_type == "baseline":
+                goal_idx = np.linalg.norm(robot.x - goals, axis=0).argmin()
+            elif robot_type == "baseline_belief":
+                # pick the closest goal that the human is not moving towards
+                dists = np.linalg.norm(robot.x - goals, axis=0)
+                dists[belief_nominal.belief.argmax()] = np.inf
+                goal_idx = dists.argmin()
+
+            robot.goal = goals[:,[goal_idx]]
 
             # step dynamics forward
             xh = h_dynamics.step(xh, uh)
+            human.x = xh
 
             # save data
             xh_traj = np.hstack((xh_traj, xh))
-            beliefs = np.vstack((beliefs, belief.belief))
+            r_beliefs = np.vstack((r_beliefs, r_belief.belief))
+            beliefs_nominal = np.vstack((beliefs_nominal, belief_nominal.belief))
             beliefs_beta = np.dstack((beliefs_beta, beta_belief.belief))
+            # save robot's actual intended goal
+            r_goal_idxs.append(np.argmin(np.linalg.norm(robot.goal - goals, axis=0)))
 
             if np.linalg.norm(goals - xh, axis=0).min() < 1:
-                belief.actions = belief.actions_w_zero
+                belief_nominal.actions = belief_nominal.actions_w_zero
             else:
-                belief.actions = belief.actions_wo_zero
-            beta_belief.actions = belief.actions
+                belief_nominal.actions = belief_nominal.actions_wo_zero
+            beta_belief.actions = belief_nominal.actions
 
+            # TODO: plot
             ax.cla()
             overlay_timesteps(ax, xh_traj, [], n_steps=loop_idx)
             ax.scatter(xh[0], xh[2], c="blue", s=100)
@@ -297,8 +383,12 @@ def bayes_inf_rs2():
             ax.set_aspect('equal')
 
             belief_ax.cla()
+            # plot nominal belief in dotted lines
             for goal_idx in range(n_goals):
-                belief_ax.plot(beliefs[:,goal_idx], c=goal_colors[goal_idx])
+                belief_ax.plot(beliefs_nominal[:,goal_idx], c=goal_colors[goal_idx], linestyle="--")
+            # plot conditional belief for chosen goal in solid line
+            for goal_idx in range(n_goals):
+                belief_ax.plot(r_beliefs[:,goal_idx], c=goal_colors[goal_idx])
 
             beta_belief_ax.cla()
             for beta_idx in range(beta_belief.betas.shape[0]):
