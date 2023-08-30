@@ -3,7 +3,7 @@
 *.avi
 *.png
 *.jpg
-
+!assets/*.png
 data/prob_pred/
 venv/
 venv2/
