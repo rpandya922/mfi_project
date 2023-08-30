@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import cv2 as cv
 import pyrealsense2 as rs
 
@@ -213,9 +214,12 @@ def courtesy_obj(human, robot, goals, belief_prior, posts):
     for goal_idx in range(goals.shape[1]):
         p = posts[goal_idx]
         h_belief_score = p[np.argmax(belief_prior)]
-        goal_change_score = -0.01*np.linalg.norm(goals[:,[goal_idx]] - robot.goal)
+        goal_change_score = -0.03*np.linalg.norm(goals[:,[goal_idx]] - robot.goal)
         goal_scores.append(h_belief_score + goal_change_score)
     return np.argmax(goal_scores)
+
+def getImage(path, **kwargs):
+    return OffsetImage(plt.imread(path), **kwargs)
 
 def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     """
@@ -253,13 +257,13 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     ts = 0.1
     traj_horizon = 20
     n_goals = 3
-    game_horizon = 1200
+    game_horizon = 900
 
     xr = np.random.uniform(-10, 10, (4, 1))
     xr[[1,3]] = 0
     xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
-    goals[[1,3],:] = np.zeros((2, 3))
+    goals[[1,3],:] = np.zeros((2, n_goals))
     while min_goal_dists(goals) < 5:
         goals = np.random.uniform(size=(4, n_goals))*20 - 10
         goals[[1,3],:] = np.zeros((2, 3))
@@ -305,10 +309,12 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     elif mode == "study":
         fig, ax = plt.subplots(figsize=(12,7))
 
+    # goal_colors = ["#3A637B", "#C4A46B", "#FF5A00", "green"]
     goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
+    goal_imgs = ["./assets/diamond.png", "./assets/diamond.png", "./assets/diamond.png"]
 
     both_at_goal_count = 0
-
+    team_score = 0
     loop_idx = 0
     try:
         robot_wait_time = 5
@@ -341,6 +347,9 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 beta_belief.belief = np.ones((n_goals, len(beta_belief.betas))) / (n_goals*len(beta_belief.betas))
                 beta_belief.thetas = goals
 
+                # increase score
+                team_score += 2
+
             # Wait for a coherent color frame
             frames = pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
@@ -349,8 +358,6 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
 
             # Convert images to numpy arrays
             frame = np.asanyarray(color_frame.get_data())
-
-            # get_homography(frame)
 
             marker_center = get_marker_center(frame)
 
@@ -364,11 +371,12 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 if xh is None:
                     continue
                 uh = np.zeros((2,1)) + 0.05*(2*np.random.rand(2,1)-1)
-            
+
             # update belief
-            if np.linalg.norm(uh) > 1e-4: # only if action is non-zero            
-                r_belief_prior = belief_nominal.update_belief(xh, uh)
+            if np.linalg.norm(uh) > 1e-4:
                 beta_belief.update_belief(xh, uh)
+            if np.linalg.norm(uh) > 1e-1: # only if action is non-zero            
+                r_belief_prior = belief_nominal.update_belief(xh, uh)
             else:
                 r_belief_prior = belief_nominal.belief
 
@@ -377,29 +385,13 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 human_waiting = True
             is_human_waiting.append(human_waiting)
 
-            # if not human_waiting and robot_wait_time > 0 and robot_type == "cbp":
-            #     ur = np.zeros((2,1))
-            #     obs_loc = None
-            #     robot_wait_time -= 1
-            #     is_robot_waiting.append(True)
-            # else:
-            #     robot_wait_time = 0 # make sure robot commits to waiting only at the start
-            #     # generate safe trajectory for robot
-            #     safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
-            #     # if robot is sufficiently close to its goal, just move straight to the goal without considering human
-            #     if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1.5) or h_goal_reached:
-            #         ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
-            #     else:
-            #         ur = ur_traj[:,[0]]
-            #     is_robot_waiting.append(False)
-
-            # TODO: add robot waiting for a couple timesteps if necessary
             is_robot_waiting.append(False)
             safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
-            if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1):
-                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
-            else:
-                ur = ur_traj[:,[0]]
+            # if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1):
+            #     ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+            # else:
+            #     ur = ur_traj[:,[0]]
+            ur = ur_traj[:,[0]]
 
             xh_next = human.dynamics.A @ human.x + human.dynamics.B @ uh
             # loop through goals and compute belief update for each potential robot goal
@@ -407,8 +399,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             for goal_idx in range(goals.shape[1]):
                 goal = goals[:,[goal_idx]]
                 # compute CBP belief update
-                # TODO: tune weights in score function properly
-                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5)
+                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=3)
                 posts.append(r_belief_post)
 
             # choose whether to influence or be curteous
@@ -417,8 +408,10 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 influence_human = True
             if influence_human:
                 obj = influence_obj
+                # print("influence")
             else:
                 obj = courtesy_obj
+                # print("courtesy")
 
             if robot_type == "cbp":
                 goal_idx = obj(human, robot, goals, r_belief_prior, posts)
@@ -427,7 +420,10 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             elif robot_type == "baseline_belief":
                 # pick the closest goal that the human is not moving towards
                 dists = np.linalg.norm(robot.x - goals, axis=0)
-                dists[belief_nominal.belief.argmax()] = np.inf
+                if belief_nominal.belief.max() > 0.8:
+                    dists[belief_nominal.belief.argmax()] = np.inf
+                else:
+                    ur = np.zeros((2,1))
                 goal_idx = dists.argmin()
 
             robot.goal = goals[:,[goal_idx]]
@@ -444,14 +440,16 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             # check how long human and robot have been at goals
             h_at_goal = False
             r_at_goal = False
-            if np.linalg.norm(goals - xh, axis=0).min() <= 0.5:
+            if np.linalg.norm(goals - xh, axis=0).min() <= 0.7:
                 h_at_goal = True
-            if np.linalg.norm(goals - xr, axis=0).min() <= 0.5:
+            if np.linalg.norm(goals - xr, axis=0).min() <= 0.7:
                 r_at_goal = True
             if h_at_goal and r_at_goal:
                 both_at_goal_count += 1
             else:
                 both_at_goal_count = 0
+
+            # TODO: reduce score by 1 if agents are in collision
 
             # save data
             xh_traj = np.hstack((xh_traj, xh))
@@ -470,12 +468,22 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
 
             ax.cla()
             overlay_timesteps(ax, xh_traj[:,-50:], xr_traj[:,-50:], n_steps=loop_idx)
+            if mode == "debug":
+                ax.scatter(goals[0], goals[2], c=goal_colors)
+            elif mode == "study":
+                for goal_idx in range(n_goals):
+                    ab = AnnotationBbox(getImage(goal_imgs[goal_idx], zoom=0.5, alpha=0.7), (goals[0,goal_idx], goals[2,goal_idx]), frameon=False)
+                    ax.add_artist(ab)
             ax.scatter(xh[0], xh[2], c="blue", s=100)
             ax.scatter(xr[0], xr[2], c="red", s=100)
-            ax.scatter(goals[0], goals[2], c=goal_colors)
             ax.set_xlim(-11, 11)
             ax.set_ylim(-11, 11)
             ax.set_aspect('equal')
+
+            # add score and timer to plot 
+            if mode == "study":
+                time_remaining = int((game_horizon - loop_idx) * ts)
+                plt.text(0.4, 0.9, f"Score: {team_score}   Time: {time_remaining} sec", fontsize=14, transform=plt.gcf().transFigure)
 
             # plot circle indicating percent time waited at goal
             if both_at_goal_count > 0:
@@ -521,7 +529,10 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
         pipeline.stop()
 
     # TODO: save data to a file
+    print(team_score)
 
 if __name__ == "__main__":
+    np.random.seed(0)
     # test_rs2_cam()
-    bayes_inf_rs2(mode="study")
+    # bayes_inf_rs2(robot_type="baseline_belief", mode="study")
+    bayes_inf_rs2(robot_type="cbp", mode="study")

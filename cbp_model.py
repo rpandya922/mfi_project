@@ -145,13 +145,13 @@ class CBPEstimatorAR():
 
         return self.actions[a_idx], a_idx
 
-    def score_thetas(self, theta1, theta2, theta_prior, state, w=2):
+    def score_thetas(self, theta1, theta2, theta_prior, state, w=3):
         """
         generally, theta1 is the considered new goal for the human, theta2 is the robot's chosen goal, and theta_prior is the human's current goal (or our consideration of it)
         """
         # we want to model the behavior that the human chooses the goal closest to them that's not the same as the robot's goal
         # high score -> high interaction, so we want a low score for theta1 being close to state 
-        s = 2*np.linalg.norm(theta1 - state) - np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
+        s = 1*np.linalg.norm(theta1 - state) - 3*np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         # NOTE: converges to original belief as w -> inf (this means we think human won't be very affected by robot's choice)
         # s = -np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         return s
@@ -332,6 +332,9 @@ class BetaBayesEstimatorAR():
 
         # update belief
         new_belief = (y_i * self.belief) / np.sum(y_i * self.belief)
+
+        # set min belief to 1%
+        new_belief[new_belief < 0.01] = 0.01
 
         self.belief = new_belief
 
