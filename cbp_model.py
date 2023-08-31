@@ -50,7 +50,7 @@ class CBPEstimator():
         """
         # we want to model the behavior that the human chooses the goal closest to them that's not the same as the robot's goal
         # high score -> high interaction, so we want a low score for theta1 being close to state 
-        s = 2*np.linalg.norm(theta1 - state) - np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
+        s = 2*np.linalg.norm(theta1 - state) - 0.9*np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         # NOTE: converges to original belief as w -> inf (this means we think human won't be very affected by robot's choice)
         # s = -np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         return s
@@ -212,7 +212,6 @@ class CBPEstimatorAR():
     def copy(self):
         return CBPEstimatorAR(self.thetas.copy(), self.dynamics, self.belief.copy(), self.beta)
 
-
 class BetaBayesEstimator():
     def __init__(self, thetas, betas, dynamics, prior=None):
         self.thetas = thetas # column vectors
@@ -272,7 +271,7 @@ class BetaBayesEstimator():
         # self.belief = new_belief
 
         # set min belief value at 0.01
-        new_belief[new_belief < 0.005] = 0.005
+        new_belief[new_belief < 0.01] = 0.01
 
         return new_belief
     

@@ -346,6 +346,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 belief_nominal.thetas = goals
                 beta_belief.belief = np.ones((n_goals, len(beta_belief.betas))) / (n_goals*len(beta_belief.betas))
                 beta_belief.thetas = goals
+                robot.goals = goals
 
                 # increase score
                 team_score += 2
