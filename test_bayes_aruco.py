@@ -299,6 +299,11 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     r_goal_idxs = []
     is_robot_waiting = []
     is_human_waiting = []
+    all_goals = np.zeros((goals.shape[0], goals.shape[1], 0))
+    r_objective = []
+    agents_collided = []
+    h_goal_reached = []
+    r_goal_reached = []
 
     if mode == "debug":
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 7))
@@ -315,6 +320,8 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
 
     both_at_goal_count = 0
     team_score = 0
+    n_collisions = 0
+    collision_timer = 0
     loop_idx = 0
     try:
         robot_wait_time = 5
@@ -409,9 +416,11 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 influence_human = True
             if influence_human:
                 obj = influence_obj
+                r_objective.append("influence")
                 # print("influence")
             else:
                 obj = courtesy_obj
+                r_objective.append("courtesy")
                 # print("courtesy")
 
             if robot_type == "cbp":
@@ -450,7 +459,15 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             else:
                 both_at_goal_count = 0
 
-            # TODO: reduce score by 1 if agents are in collision
+            # count collision (but not more than once per collision event)
+            in_collision = False
+            if (np.linalg.norm(xh[[0,2]] - xr[[0,2]]) <= 1):
+                if collision_timer == 0:
+                    n_collisions += 1
+                    in_collision = True
+                collision_timer += 1
+            else:
+                collision_timer = 0
 
             # save data
             xh_traj = np.hstack((xh_traj, xh))
@@ -460,6 +477,14 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             beliefs_beta = np.dstack((beliefs_beta, beta_belief.belief))
             # save robot's actual intended goal
             r_goal_idxs.append(np.argmin(np.linalg.norm(robot.goal - goals, axis=0)))
+            all_goals = np.dstack((all_goals, goals))
+            agents_collided.append(in_collision)
+            if both_at_goal_count >= 10:
+                h_goal_reached.append(np.linalg.norm(xh - goals, axis=0).argmin())
+                r_goal_reached.append(np.linalg.norm(xr - goals, axis=0).argmin())
+            else:
+                h_goal_reached.append(-1)
+                r_goal_reached.append(-1)
 
             if np.linalg.norm(goals - xh, axis=0).min() < 1:
                 belief_nominal.actions = belief_nominal.actions_w_zero
@@ -477,6 +502,9 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                     ax.add_artist(ab)
             ax.scatter(xh[0], xh[2], c="blue", s=100)
             ax.scatter(xr[0], xr[2], c="red", s=100)
+            # plot a circle denoting minimum safe distance around each agent
+            ax.add_artist(plt.Circle((xh[0], xh[2]), 0.5, color="k", fill=None, linestyle="--"))
+            ax.add_artist(plt.Circle((xr[0], xr[2]), 0.5, color="k", fill=None, linestyle="--"))
             ax.set_xlim(-11, 11)
             ax.set_ylim(-11, 11)
             ax.set_aspect('equal')
@@ -484,7 +512,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             # add score and timer to plot 
             if mode == "study":
                 time_remaining = int((game_horizon - loop_idx) * ts)
-                plt.text(0.4, 0.9, f"Score: {team_score}   Time: {time_remaining} sec", fontsize=14, transform=plt.gcf().transFigure)
+                plt.text(0.4, 0.9, f"Score: {team_score-n_collisions}   Time: {time_remaining} sec", fontsize=14, transform=plt.gcf().transFigure)
 
             # plot circle indicating percent time waited at goal
             if both_at_goal_count > 0:
@@ -529,11 +557,15 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
         # Stop streaming
         pipeline.stop()
 
-    # TODO: save data to a file
-    print(team_score)
+    print(team_score, n_collisions)
+
+    # return data from this game to be saved to a file
+    data = {"xh_traj": xh_traj, "xr_traj": xr_traj, "r_beliefs": r_beliefs, "r_beliefs_nominal": beliefs_nominal, "r_beliefs_beta": beliefs_beta, "r_goal_idxs": r_goal_idxs, "goals": all_goals, "robot_type": robot_type, "is_robot_waiting": is_robot_waiting, "is_human_waiting": is_human_waiting, "collisions": agents_collided, "n_collisions": n_collisions, "team_score": team_score, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached}
+    
+    return data
 
 if __name__ == "__main__":
     np.random.seed(0)
     # test_rs2_cam()
     # bayes_inf_rs2(robot_type="baseline_belief", mode="study")
-    bayes_inf_rs2(robot_type="cbp", mode="study")
+    bayes_inf_rs2(robot_type="baseline", mode="study")

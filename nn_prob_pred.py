@@ -904,6 +904,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    raw_data_path = "./data/prob_pred/bayes_prob_branching_ts01_safe.pkl"
-    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe.h5"
-    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=500, branching=True, n_traj=10, history=5, horizon=20)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_val_ts01_safe.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_val_feats_ts01_safe.h5"
+    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)
