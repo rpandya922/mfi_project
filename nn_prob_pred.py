@@ -13,6 +13,7 @@ from bayes_inf import BayesEstimator, BayesHuman
 from human import Human
 from robot import Robot
 from intention_utils import overlay_timesteps, get_robot_plan, process_model_input
+from generate_path_loop_multiple_obs import generate_trajectory_belief
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -287,6 +288,7 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
     init_conds = [(xh0, xr0, False, np.ones(goals.shape[1]) / goals.shape[1], branching_num, xh_init_hist, xr_init_hist) for _ in range(n_traj)] # start from the first initial contition n_traj times
     branching_num += 1
     plot = False
+    r_belief = BayesEstimator(goals, None) # just need placeholder that has .belief attribute for safe control generation
     if plot:
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
         axes = np.array(axes).flatten()
@@ -371,7 +373,15 @@ def simulate_init_cond_branching(xr0, xh0, human, robot, goals, n_traj=10, branc
 
              # compute agent controls
             uh = human.get_u(robot.x)
-            ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+
+            # compute safe control if robot is far from goal
+            if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) >= 1.5):
+                traj_horizon = 20
+                safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
+                ur = ur_traj[:,[0]]
+            else:
+                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+
             if robot_obs is not None and i < 50: # so robot doesn't get stuck if obstacle is near goal
                 ur += robot.dynamics.get_robot_control(robot.x, robot_obs)
             # # robot should stay still for 5 timesteps
@@ -861,7 +871,7 @@ if __name__ == "__main__":
     # # save_dataset()
     # np.random.seed(2) # normal test seed
     # np.random.seed(1)
-    np.random.seed(0)
+    # np.random.seed(0)
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230620-205847.pt"
     # model_path = "./data/prob_pred/checkpoints/2023-06-15_13-33-40_lr_0.001_bs_256/model_4.pt"
     # model_path = "./data/models/sim_intention_predictor_bayes_ll.pt"
@@ -870,10 +880,10 @@ if __name__ == "__main__":
     # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230804-073911.pt" # working ts=0.05
     # stats_file = "./data/models/bayes_prob_branching_processed_feats_stats.pkl" # working ts=0.05
 
-    stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_stats.pkl" # working ts=0.1
-    model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
-    plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
-    plt.show()
+    # stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_stats.pkl" # working ts=0.1
+    # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+    # plot_model_pred(model_path, hist_feats=21, plan_feats=10, feats=True, stats_file=stats_file)
+    # plt.show()
 
     # save_dataset()
     # create_dataset(n_init_cond=1, branching=True)
@@ -894,6 +904,6 @@ if __name__ == "__main__":
     # visualize_dataset(raw_data_path)
 
     # save new data and convert to h5 with featurization
-    # raw_data_path = "./data/prob_pred/bayes_prob_branching_val_ts01.pkl"
-    # processed_data_path = "./data/prob_pred/bayes_prob_branching_val_processed_feats_ts01.h5"
-    # save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=100, branching=True, n_traj=10, history=5, horizon=20)
+    raw_data_path = "./data/prob_pred/bayes_prob_branching_ts01_safe.pkl"
+    processed_data_path = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe.h5"
+    save_dataset_h5(raw_data_path, processed_data_path, n_init_cond=500, branching=True, n_traj=10, history=5, horizon=20)
