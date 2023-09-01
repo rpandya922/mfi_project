@@ -253,18 +253,19 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     pipeline.start(config)
 
     # create bayesian estimator
-    np.random.seed(0)
+    # np.random.seed(0)
     ts = 0.1
     traj_horizon = 20
     n_goals = 3
-    game_horizon = 900
+    game_horizon = 600
+    min_pairwise_dist = 5
 
     xr = np.random.uniform(-10, 10, (4, 1))
     xr[[1,3]] = 0
     xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
     goals[[1,3],:] = np.zeros((2, n_goals))
-    while min_goal_dists(goals) < 5:
+    while min_goal_dists(goals) < min_pairwise_dist:
         goals = np.random.uniform(size=(4, n_goals))*20 - 10
         goals[[1,3],:] = np.zeros((2, 3))
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
@@ -302,8 +303,8 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     all_goals = np.zeros((goals.shape[0], goals.shape[1], 0))
     r_objective = []
     agents_collided = []
-    h_goal_reached = []
-    r_goal_reached = []
+    all_h_goal_reached = []
+    all_r_goal_reached = []
 
     if mode == "debug":
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 7))
@@ -317,6 +318,8 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     # goal_colors = ["#3A637B", "#C4A46B", "#FF5A00", "green"]
     goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
     goal_imgs = ["./assets/diamond.png", "./assets/diamond.png", "./assets/diamond.png"]
+    robot_colors = {"baseline": "brown", "baseline_belief": "purple", "cbp": "green"}
+    robot_cmaps = {"baseline": "copper_r", "baseline_belief": "Purples", "cbp": "Greens"}
 
     both_at_goal_count = 0
     team_score = 0
@@ -339,7 +342,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 new_goals = np.random.uniform(size=(4, 2))*20 - 10
                 new_goals[[1,3],:] = np.zeros((2, 2))
                 goals[:,[h_goal_idx, r_goal_idx]] = new_goals
-                while min_goal_dists(goals) < 5:
+                while min_goal_dists(goals) < min_pairwise_dist:
                     new_goals = np.random.uniform(size=(4, 2))*20 - 10
                     new_goals[[1,3],:] = np.zeros((2, 2))
                     goals[:,[h_goal_idx, r_goal_idx]] = new_goals
@@ -430,7 +433,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             elif robot_type == "baseline_belief":
                 # pick the closest goal that the human is not moving towards
                 dists = np.linalg.norm(robot.x - goals, axis=0)
-                if belief_nominal.belief.max() > 0.8:
+                if belief_nominal.belief.max() > 0.5:
                     dists[belief_nominal.belief.argmax()] = np.inf
                 else:
                     ur = np.zeros((2,1))
@@ -480,11 +483,11 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             all_goals = np.dstack((all_goals, goals))
             agents_collided.append(in_collision)
             if both_at_goal_count >= 10:
-                h_goal_reached.append(np.linalg.norm(xh - goals, axis=0).argmin())
-                r_goal_reached.append(np.linalg.norm(xr - goals, axis=0).argmin())
+                all_h_goal_reached.append(np.linalg.norm(xh - goals, axis=0).argmin())
+                all_r_goal_reached.append(np.linalg.norm(xr - goals, axis=0).argmin())
             else:
-                h_goal_reached.append(-1)
-                r_goal_reached.append(-1)
+                all_h_goal_reached.append(-1)
+                all_r_goal_reached.append(-1)
 
             if np.linalg.norm(goals - xh, axis=0).min() < 1:
                 belief_nominal.actions = belief_nominal.actions_w_zero
@@ -493,7 +496,8 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             beta_belief.actions = belief_nominal.actions
 
             ax.cla()
-            overlay_timesteps(ax, xh_traj[:,-50:], xr_traj[:,-50:], n_steps=loop_idx)
+            r_cmap = robot_cmaps[robot_type]
+            overlay_timesteps(ax, xh_traj[:,-50:], xr_traj[:,-50:], n_steps=loop_idx, r_cmap=r_cmap)
             if mode == "debug":
                 ax.scatter(goals[0], goals[2], c=goal_colors)
             elif mode == "study":
@@ -501,7 +505,8 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                     ab = AnnotationBbox(getImage(goal_imgs[goal_idx], zoom=0.5, alpha=0.7), (goals[0,goal_idx], goals[2,goal_idx]), frameon=False)
                     ax.add_artist(ab)
             ax.scatter(xh[0], xh[2], c="blue", s=100)
-            ax.scatter(xr[0], xr[2], c="red", s=100)
+            r_color = robot_colors[robot_type]
+            ax.scatter(xr[0], xr[2], c=r_color, s=100)
             # plot a circle denoting minimum safe distance around each agent
             ax.add_artist(plt.Circle((xh[0], xh[2]), 0.5, color="k", fill=None, linestyle="--"))
             ax.add_artist(plt.Circle((xr[0], xr[2]), 0.5, color="k", fill=None, linestyle="--"))
@@ -558,9 +563,10 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
         pipeline.stop()
 
     print(team_score, n_collisions)
+    plt.close()
 
     # return data from this game to be saved to a file
-    data = {"xh_traj": xh_traj, "xr_traj": xr_traj, "r_beliefs": r_beliefs, "r_beliefs_nominal": beliefs_nominal, "r_beliefs_beta": beliefs_beta, "r_goal_idxs": r_goal_idxs, "goals": all_goals, "robot_type": robot_type, "is_robot_waiting": is_robot_waiting, "is_human_waiting": is_human_waiting, "collisions": agents_collided, "n_collisions": n_collisions, "team_score": team_score, "h_goal_reached": h_goal_reached, "r_goal_reached": r_goal_reached}
+    data = {"xh_traj": xh_traj, "xr_traj": xr_traj, "r_beliefs": r_beliefs, "r_beliefs_nominal": beliefs_nominal, "r_beliefs_beta": beliefs_beta, "r_goal_idxs": r_goal_idxs, "goals": all_goals, "robot_type": robot_type, "is_robot_waiting": is_robot_waiting, "is_human_waiting": is_human_waiting, "collisions": agents_collided, "n_collisions": n_collisions, "team_score": team_score, "h_goal_reached": all_h_goal_reached, "r_goal_reached": all_r_goal_reached}
     
     return data
 
