@@ -2,9 +2,9 @@ import os
 import time
 import numpy as np
 import pickle
-from random import shuffle
+from random import shuffle, randint
 
-from test_bayes_aruco import bayes_inf_rs2
+from test_bayes_aruco import bayes_inf_rs2, practice_round
 
 def run_n_games(folder, robot_type, n_games):
     for game_idx in range(n_games):
@@ -20,7 +20,9 @@ def run_n_games(folder, robot_type, n_games):
 
 
 if __name__ == "__main__":
-    user = "test"
+    # user = "test"
+    user = str(randint(1000, 9999))
+    print(f"User: {user}")
     controllers = ["baseline", "baseline_belief", "cbp"]
     shuffle(controllers)
 
@@ -32,7 +34,16 @@ if __name__ == "__main__":
     with open(filepath, 'wb') as f:
         pickle.dump(controllers, f)
 
-    # run n_games for each controller (and randomize the order of the controllers)
+    # run practice round
+    input("Hit [Enter] to play practice round")
+    data = practice_round(mode="study")
+    filename = "practice_round.pkl"
+    filepath = foldername + filename
+    with open(filepath, 'wb') as f:
+        pickle.dump(data, f)
+    print()
+
+    # run n_games for each controller
     for robot_idx, robot in enumerate(controllers):
         input(f"Hit [Enter] to start games with robot {robot_idx}.")
         run_n_games(foldername, robot, n_games)
