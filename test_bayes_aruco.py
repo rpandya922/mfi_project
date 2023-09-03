@@ -258,17 +258,19 @@ def practice_round(robot_type="baseline_belief", mode="debug"):
     ts = 0.1
     traj_horizon = 20
     n_goals = 3
-    game_horizon = 600
-    duration = 60 # seconds
+    game_horizon = 450
+    duration = 45 # seconds
     min_pairwise_dist = 5
 
     xr = np.random.uniform(-10, 10, (4, 1))
     xr[[1,3]] = 0
     xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
+    goals[2,:] = np.clip(goals[2,:], None, 7.5)
     goals[[1,3],:] = np.zeros((2, n_goals))
     while min_goal_dists(goals) < min_pairwise_dist:
         goals = np.random.uniform(size=(4, n_goals))*20 - 10
+        goals[2,:] = np.clip(goals[2,:], None, 7.5)
         goals[[1,3],:] = np.zeros((2, 3))
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
 
@@ -345,10 +347,12 @@ def practice_round(robot_type="baseline_belief", mode="debug"):
                 # r_goal_idx = np.argmin(np.linalg.norm(xr - goals, axis=0))
                 
                 new_goals = np.random.uniform(size=(4, 1))*20 - 10
+                new_goals[2,:] = np.clip(new_goals[2,:], None, 7.5)
                 new_goals[[1,3],:] = np.zeros((2, 1))
                 goals[:,[h_goal_idx]] = new_goals
                 while min_goal_dists(goals) < min_pairwise_dist:
                     new_goals = np.random.uniform(size=(4, 1))*20 - 10
+                    new_goals[2,:] = np.clip(new_goals[2,:], None, 7.5)
                     new_goals[[1,3],:] = np.zeros((2, 1))
                     goals[:,[h_goal_idx]] = new_goals
                 
@@ -518,7 +522,9 @@ def practice_round(robot_type="baseline_belief", mode="debug"):
             ax.add_artist(plt.Circle((xh[0], xh[2]), 0.5, color="k", fill=None, linestyle="--"))
             # ax.add_artist(plt.Circle((xr[0], xr[2]), 0.5, color="k", fill=None, linestyle="--"))
             ax.set_xlim(-11, 11)
-            ax.set_ylim(-11, 11)
+            ax.set_ylim(-11, 8.5)
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
             ax.set_aspect('equal')
 
             # add score and timer to plot 
@@ -573,7 +579,7 @@ def practice_round(robot_type="baseline_belief", mode="debug"):
         # Stop streaming
         pipeline.stop()
 
-    print(team_score)
+    # print(team_score)
     plt.close()
 
     # return data from this game to be saved to a file
@@ -581,7 +587,7 @@ def practice_round(robot_type="baseline_belief", mode="debug"):
     
     return data
 
-def bayes_inf_rs2(robot_type="cbp", mode="debug"):
+def bayes_inf_rs2(robot_type="cbp", mode="debug", round_num=-1, user=-1):
     """
     Bayesian inference on human wrist position using realsense camera
     """
@@ -617,17 +623,19 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
     ts = 0.1
     traj_horizon = 10
     n_goals = 3
-    game_horizon = 600
-    duration = 60 # seconds
+    game_horizon = 450
+    duration = 45 # seconds
     min_pairwise_dist = 5
 
     xr = np.random.uniform(-10, 10, (4, 1))
     xr[[1,3]] = 0
     xh0 = np.zeros((4,1))
     goals = np.random.uniform(size=(4, n_goals))*20 - 10
+    goals[2,:] = np.clip(goals[2,:], None, 7.5)
     goals[[1,3],:] = np.zeros((2, n_goals))
     while min_goal_dists(goals) < min_pairwise_dist:
         goals = np.random.uniform(size=(4, n_goals))*20 - 10
+        goals[2,:] = np.clip(goals[2,:], None, 7.5)
         goals[[1,3],:] = np.zeros((2, 3))
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
 
@@ -704,10 +712,12 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 r_goal_idx = np.argmin(np.linalg.norm(xr - goals, axis=0))
                 
                 new_goals = np.random.uniform(size=(4, 2))*20 - 10
+                new_goals[2,:] = np.clip(new_goals[2,:], None, 7.5)
                 new_goals[[1,3],:] = np.zeros((2, 2))
                 goals[:,[h_goal_idx, r_goal_idx]] = new_goals
                 while min_goal_dists(goals) < min_pairwise_dist:
                     new_goals = np.random.uniform(size=(4, 2))*20 - 10
+                    new_goals[2,:] = np.clip(new_goals[2,:], None, 7.5)
                     new_goals[[1,3],:] = np.zeros((2, 2))
                     goals[:,[h_goal_idx, r_goal_idx]] = new_goals
                 
@@ -762,11 +772,12 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
 
             is_robot_waiting.append(False)
             safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
-            # if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1):
-            #     ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
-            # else:
-            #     ur = ur_traj[:,[0]]
-            ur = ur_traj[:,[0]]
+            # turn off safety if robot and human are both close to goals
+            if (np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) < 1.2) and (np.linalg.norm(goals - xh, axis=0).min() <= 0.7):
+                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+            else:
+                ur = ur_traj[:,[0]]
+            # ur = ur_traj[:,[0]]
 
             xh_next = human.dynamics.A @ human.x + human.dynamics.B @ uh
             # loop through goals and compute belief update for each potential robot goal
@@ -776,7 +787,6 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
                 # compute CBP belief update
                 r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=3)
                 posts.append(r_belief_post)
-            # TODO: save all posterior distributions
 
             # choose whether to influence or be curteous
             influence_human = False
@@ -841,6 +851,7 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             xh_traj = np.hstack((xh_traj, xh))
             xr_traj = np.hstack((xr_traj, xr))
             r_beliefs = np.vstack((r_beliefs, r_belief.belief))
+            r_beliefs_cond = np.dstack((r_beliefs_cond, np.array(posts)))
             beliefs_nominal = np.vstack((beliefs_nominal, belief_nominal.belief))
             beliefs_beta = np.dstack((beliefs_beta, beta_belief.belief))
             # save robot's actual intended goal
@@ -876,11 +887,15 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
             ax.add_artist(plt.Circle((xh[0], xh[2]), 0.5, color="k", fill=None, linestyle="--"))
             ax.add_artist(plt.Circle((xr[0], xr[2]), 0.5, color="k", fill=None, linestyle="--"))
             ax.set_xlim(-11, 11)
-            ax.set_ylim(-11, 11)
+            ax.set_ylim(-11, 8.5)
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
             ax.set_aspect('equal')
 
             # add score and timer to plot 
             if mode == "study":
+                # add user, robot and round info to plot
+                plt.text(0.1, 0.9, f"User {user}\nRound {round_num+1}\nRobot {r_color}", fontsize=12, transform=plt.gcf().transFigure)
                 # time_remaining = int((game_horizon - loop_idx) * ts)
                 time_remaining = int(duration - elapsed_time)
                 plt.text(0.4, 0.9, f"Score: {team_score-n_collisions}   Time: {time_remaining} sec", fontsize=14, transform=plt.gcf().transFigure)
@@ -931,11 +946,11 @@ def bayes_inf_rs2(robot_type="cbp", mode="debug"):
         # Stop streaming
         pipeline.stop()
 
-    print(team_score, n_collisions)
+    # print(team_score, n_collisions)
     plt.close()
 
     # return data from this game to be saved to a file
-    data = {"xh_traj": xh_traj, "xr_traj": xr_traj, "r_beliefs": r_beliefs, "r_beliefs_nominal": beliefs_nominal, "r_beliefs_beta": beliefs_beta, "r_goal_idxs": r_goal_idxs, "goals": all_goals, "robot_type": robot_type, "is_robot_waiting": is_robot_waiting, "is_human_waiting": is_human_waiting, "collisions": agents_collided, "n_collisions": n_collisions, "team_score": team_score, "h_goal_reached": all_h_goal_reached, "r_goal_reached": all_r_goal_reached}
+    data = {"xh_traj": xh_traj, "xr_traj": xr_traj, "r_beliefs": r_beliefs, "r_beliefs_nominal": beliefs_nominal, "r_beliefs_beta": beliefs_beta, "r_goal_idxs": r_goal_idxs, "goals": all_goals, "robot_type": robot_type, "is_robot_waiting": is_robot_waiting, "is_human_waiting": is_human_waiting, "collisions": agents_collided, "n_collisions": n_collisions, "team_score": team_score, "h_goal_reached": all_h_goal_reached, "r_goal_reached": all_r_goal_reached, "r_beliefs_cond": r_beliefs_cond, "r_objective": r_objective}
     
     return data
 
@@ -943,5 +958,5 @@ if __name__ == "__main__":
     np.random.seed(0)
     # test_rs2_cam()
     # bayes_inf_rs2(robot_type="baseline_belief", mode="study")
-    bayes_inf_rs2(robot_type="baseline", mode="study")
-    # practice_round(mode="study")
+    # bayes_inf_rs2(robot_type="cbp", mode="study")
+    practice_round(mode="study")
