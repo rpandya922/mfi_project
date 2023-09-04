@@ -110,7 +110,6 @@ def run_simulation(robot_type="cbp", human_type="moving", plot=True):
         r_beta_ax = axes[4]
         r_likelihoods_ax = axes[5]
     
-    # TODO: change sim to continue adding goals 
     robot_wait_time = 5
     h_goal_reached = False
     r_goal_reached = False
@@ -302,8 +301,9 @@ def run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True):
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[5e-6, 5e-5, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
 
     if robot_type == "cbp_nn":
-        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_stats.pkl" # working ts=0.1
-        model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
+        # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+        model_path = "./data/models/prob_pred_intention_predictor_bayes_20230902-112136.pt" # working ts=0.1
         k_hist = 5
         model = create_model(horizon_len=traj_horizon, hidden_size=128, num_layers=2, hist_feats=21, plan_feats=10)
         model.load_state_dict(torch.load(model_path, map_location=device))
@@ -513,8 +513,8 @@ def run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True):
     return data
 
 def run_simulations(filepath="./data/sim_stats.pkl", n_traj=10):
-    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
-    # robot_types = ["cbp_nn"]
+    # robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
+    robot_types = ["cbp_nn"]
     all_stats = {robot_type: [] for robot_type in robot_types}
     for robot_type in robot_types:
         # TODO: standardize initial conditions better (since traj len may change, this way doesn't work)
@@ -584,14 +584,17 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[5e-6, 5e-5, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
 
     if robot_type == "cbp_nn":
-        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_stats.pkl" # working ts=0.1
-        model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
+        # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
+        model_path = "./data/models/prob_pred_intention_predictor_bayes_20230902-112136.pt" # working ts=0.1
         k_hist = 5
-        model = create_model(horizon_len=traj_horizon, hidden_size=128, num_layers=2, hist_feats=8, plan_feats=4)
+        model = create_model(horizon_len=traj_horizon, hidden_size=128, num_layers=2, hist_feats=21, plan_feats=10)
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         with open(stats_file, "rb") as f:
             stats = pickle.load(f)
+    else:
+        raise ValueError("Invalid robot type")
 
     # trajectory saving
     xh_traj = xh0
@@ -676,20 +679,42 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
         if (r_belief_beta.betas[np.argmax(r_belief_beta.belief, axis=1)] < 5e-3).all():
             human_waiting = True
 
-        if np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) >= 1:
-            safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
-            ur = ur_traj[:,[0]]
-        else:
-            ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+        if robot_type != "cbp_nn":
+            if np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) >= 1:
+                safety, ur_traj, obs_loc = generate_trajectory_belief(robot, human, r_belief, traj_horizon, goals, plot=False)
+                ur = ur_traj[:,[0]]
+            else:
+                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
 
-        xh_next = human.dynamics.A @ human.x + human.dynamics.B @ uh
-        # loop through goals and compute belief update for each potential robot goal
-        posts = []
-        for goal_idx in range(goals.shape[1]):
-            goal = goals[:,[goal_idx]]
-            # compute CBP belief update
-            r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5)
-            posts.append(r_belief_post)
+            xh_next = human.dynamics.A @ human.x + human.dynamics.B @ uh
+            # loop through goals and compute belief update for each potential robot goal
+            posts = []
+            for goal_idx in range(goals.shape[1]):
+                goal = goals[:,[goal_idx]]
+                # compute CBP belief update
+                r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5)
+                posts.append(r_belief_post)
+        else:
+            # loop through goals and compute belief update for each potential robot goal
+            posts = []
+            ur_trajs = []
+            for goal_idx in range(goals.shape[1]):
+                goal = goals[:,[goal_idx]]
+
+                # get xr and xh hist for NN input
+                if idx < k_hist:
+                    # get zero-padded history of both agents
+                    xh_hist = np.hstack((np.zeros((human.dynamics.n, k_hist - idx)), xh_traj[:, 0:idx]))
+                    xr_hist = np.hstack((np.zeros((robot.dynamics.n, k_hist - idx)), xr_traj[:, 0:idx]))
+                else:
+                    xh_hist = xh_traj[:, idx - k_hist:idx]
+                    xr_hist = xr_traj[:, idx - k_hist:idx]
+                
+                # generate safe trajectory for robot given this goal
+                safety, ur_traj, distance, new_belief, obs_loc = generate_trajectories(robot, human, r_belief_nominal.belief, traj_horizon, goals, goal, xh_hist, xr_hist, model, stats_file=None, stats=stats, verbose=False, plot=False)
+
+                posts.append(new_belief)
+                ur_trajs.append(ur_traj)
 
         # choose whether to influence or be curteous
         influence_human = False
@@ -700,7 +725,13 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
         else:
             obj = courtesy_obj
 
-        if robot_type == "cbp":
+        if robot_type == "cbp_nn":
+            goal_idx = obj(human, robot, goals, r_belief_prior, posts)
+            if np.linalg.norm(robot.x[[0,2]] - robot.goal[[0,2]]) >= 1:
+                ur = ur_trajs[goal_idx][:,[0]]
+            else:
+                ur = robot.dynamics.get_goal_control(robot.x, robot.goal)
+        elif robot_type == "cbp":
             goal_idx = obj(human, robot, goals, r_belief_prior, posts)
         elif robot_type == "baseline":
             goal_idx = np.linalg.norm(robot.x - goals, axis=0).argmin()
@@ -807,7 +838,8 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
     return data
 
 def run_full_games(filepath="./data/sim_stats.pkl", n_traj=10):
-    robot_types = ["cbp", "baseline", "baseline_belief"]
+    # robot_types = ["cbp_nn", "cbp", "baseline", "baseline_belief"]
+    robot_types = ["cbp_nn"]
     all_stats = {robot_type: [] for robot_type in robot_types}
     for robot_type in robot_types:
         # TODO: standardize initial conditions better (since # goal resamples may change, this way doesn't work)

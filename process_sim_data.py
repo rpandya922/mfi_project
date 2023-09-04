@@ -2,12 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 
-def process_data(filepath):
+def process_data(filepath, robot_types=["cbp", "baseline", "baseline_belief", "cbp_nn"]):
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     
-    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
-    # robot_types = ["cbp_nn"]
     all_stats = {robot_type: {} for robot_type in robot_types}
     for robot_type in robot_types:
         robot_data = data[robot_type]
@@ -66,11 +64,14 @@ def process_full_game_data(filepath):
 
 if __name__ == "__main__":
     # filepath = "./data/cbp_sim/cbp_compare_20230821-105615.pkl" # large results file with 1000 trajectories per controller (5 goals)
-    # filepath = "./data/cbp_sim/cbp_compare_20230822-104542.pkl" # testing 3 goals again
+    robot_types = ["cbp", "baseline", "baseline_belief"]
+    filepath = "./data/cbp_sim/cbp_compare_20230822-104542.pkl" # testing 3 goals again (w/ safety)
     # filepath = "./data/cbp_sim/cbp_compare_20230822-130153.pkl" # testing w/ NN CBP too (small), bug in cbp_nn code
     # filepath = "./data/cbp_sim/cbp_compare_20230822-134801.pkl" # large results with NN CBP (3 goals), bug in code
     # filepath = "./data/cbp_sim/cbp_compare_20230823-122447.pkl" # testing no safety
-    # process_data(filepath)
+    # filepath = "./data/cbp_sim/cbp_compare_20230904-100436.pkl" # nn w/ safety
+    # robot_types = ["cbp_nn"]
+    process_data(filepath, robot_types)
 
-    filepath = "./data/cbp_sim/cbp_full_game_20230831-135807.pkl"
-    process_full_game_data(filepath)
+    # filepath = "./data/cbp_sim/cbp_full_game_20230831-135807.pkl"
+    # process_full_game_data(filepath)
