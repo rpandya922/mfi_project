@@ -301,7 +301,7 @@ def run_simulation_nn(robot_type="cbp_nn", human_type="moving", plot=True):
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[5e-6, 5e-5, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
 
     if robot_type == "cbp_nn":
-        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
+        stats_file = "./data/models/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
         # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
         model_path = "./data/models/prob_pred_intention_predictor_bayes_20230902-112136.pt" # working ts=0.1
         k_hist = 5
@@ -584,7 +584,7 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
     r_belief_beta = BetaBayesEstimator(thetas=goals, betas=[5e-6, 5e-5, 5e-3], dynamics=h_dynamics) # working with [5e-5, 5e-3]
 
     if robot_type == "cbp_nn":
-        stats_file = "./data/prob_pred/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
+        stats_file = "./data/models/bayes_prob_branching_processed_feats_ts01_safe_stats.pkl" # working ts=0.1
         # model_path = "./data/models/prob_pred_intention_predictor_bayes_20230818-174117.pt" # working ts=0.1
         model_path = "./data/models/prob_pred_intention_predictor_bayes_20230902-112136.pt" # working ts=0.1
         k_hist = 5
@@ -838,8 +838,8 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
     return data
 
 def run_full_games(filepath="./data/sim_stats.pkl", n_traj=10):
-    # robot_types = ["cbp_nn", "cbp", "baseline", "baseline_belief"]
-    robot_types = ["cbp_nn"]
+    robot_types = ["cbp_nn", "cbp", "baseline", "baseline_belief"]
+    # robot_types = ["cbp_nn"]
     all_stats = {robot_type: [] for robot_type in robot_types}
     for robot_type in robot_types:
         # TODO: standardize initial conditions better (since # goal resamples may change, this way doesn't work)
@@ -870,6 +870,6 @@ if __name__ == "__main__":
     # run_full_game(robot_type="cbp", human_type="stubborn", plot=True)
 
     filepath = f"./data/cbp_sim/cbp_full_game_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
-    n_traj = 10
+    n_traj = 100
     run_full_games(filepath, n_traj=n_traj)
     
