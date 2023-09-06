@@ -593,8 +593,8 @@ def run_full_game(robot_type="cbp", human_type="moving", plot=True):
         model.eval()
         with open(stats_file, "rb") as f:
             stats = pickle.load(f)
-    else:
-        raise ValueError("Invalid robot type")
+    # else:
+    #     raise ValueError("Invalid robot type")
 
     # trajectory saving
     xh_traj = xh0
