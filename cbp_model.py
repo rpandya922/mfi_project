@@ -44,18 +44,18 @@ class CBPEstimator():
 
         return self.actions[a_idx], a_idx
 
-    def score_thetas(self, theta1, theta2, theta_prior, state, w=2):
+    def score_thetas(self, theta1, theta2, theta_prior, state, w=2, w1=2, w2=0.9):
         """
         generally, theta1 is the considered new goal for the human, theta2 is the robot's chosen goal, and theta_prior is the human's current goal (or our consideration of it)
         """
         # we want to model the behavior that the human chooses the goal closest to them that's not the same as the robot's goal
         # high score -> high interaction, so we want a low score for theta1 being close to state 
-        s = 2*np.linalg.norm(theta1 - state) - 0.9*np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
+        s = w1*np.linalg.norm(theta1 - state) - w2*np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         # NOTE: converges to original belief as w -> inf (this means we think human won't be very affected by robot's choice)
         # s = -np.linalg.norm(theta1 - theta2) + w*np.linalg.norm(theta1 - theta_prior)
         return s
     
-    def weight_by_score(self, prior_belief, theta_r, state, beta=1):
+    def weight_by_score(self, prior_belief, theta_r, state, beta=1, w2=0.9):
         theta_r_idx = np.argmin(np.linalg.norm(self.thetas - theta_r, axis=0))
         belief_post = np.zeros(self.thetas.shape[1])
         for i in range(self.thetas.shape[1]):
@@ -64,7 +64,7 @@ class CBPEstimator():
             likelihood = np.zeros(self.thetas.shape[1])
             for j in range(self.thetas.shape[1]):
                 theta_prior = self.thetas[:,[j]] # don't need this, just index
-                scores = [self.score_thetas(self.thetas[:,[k]], theta_r, theta_prior, state) for k in range(self.thetas.shape[1])]
+                scores = [self.score_thetas(self.thetas[:,[k]], theta_r, theta_prior, state, w2=w2) for k in range(self.thetas.shape[1])]
                 # scores = self.scores[:,theta_r_idx,j]
                 # assert np.allclose(scores, scores2) # passes
                 p_post_given_prior = softmax(-beta * np.array(scores))[i]

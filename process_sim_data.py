@@ -40,16 +40,16 @@ def process_full_game_data(filepath):
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     
-    # robot_types = ["cbp", "baseline", "baseline_belief"]
-    robot_types = ["cbp_nn"]
+    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
+    # robot_types = ["cbp_nn"]
     all_stats = {robot_type: {} for robot_type in robot_types}
     for robot_type in robot_types:
         robot_data = data[robot_type]
         print(robot_type)
         scores = []
         for idx, trial_data in enumerate(robot_data):
-            # if idx % 2 == 0:
-            print(trial_data["team_score"])
+            # if idx % 2 == 1:
+                # print(trial_data["team_score"])
             scores.append(trial_data["team_score"])
         print(np.mean(scores), np.std(scores))
         print()
@@ -71,10 +71,11 @@ if __name__ == "__main__":
     # filepath = "./data/cbp_sim/cbp_compare_20230823-122447.pkl" # testing no safety
     # filepath = "./data/cbp_sim/cbp_compare_20230904-100436.pkl" # nn w/ safety
     # robot_types = ["cbp_nn"]
-    filepath = "./data/cbp_sim/cbp_compare_20230904-145058.pkl" # all controllers w/ safety 100 trials
-    robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
-    process_data(filepath, robot_types)
+    # filepath = "./data/cbp_sim/cbp_compare_20230904-145058.pkl" # all controllers w/ safety 100 trials
+    # robot_types = ["cbp", "baseline", "baseline_belief", "cbp_nn"]
+    # process_data(filepath, robot_types)
 
     # filepath = "./data/cbp_sim/cbp_full_game_20230831-135807.pkl"
     # filepath = "./data/cbp_sim/cbp_full_game_20230904-114510.pkl"
-    # process_full_game_data(filepath)
+    filepath = "./data/cbp_sim/cbp_full_game_20230906-174055.pkl" # full game 100 initial conditions, all condtrollers, safety
+    process_full_game_data(filepath)
