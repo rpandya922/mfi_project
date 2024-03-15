@@ -123,9 +123,10 @@ def plot_constraints(data):
         # input(": ")
 
 if __name__ == "__main__":
-    # filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories
+    # filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories (used for camera ready draft on 3/15/24 at 10am)
     # filename = "./data/sim_stats_20230810-150707.pkl" # 100 traj used for paper draft results on 8/11/23
-    filename = "./data/sim_stats_20230810-201114.pkl"
+    # filename = "./data/sim_stats_20230810-201114.pkl"
+    filename = "./data/sim_stats_20240315-125255.pkl"
     with open(filename, "rb") as f:
         data = pickle.load(f)
 
@@ -154,6 +155,7 @@ if __name__ == "__main__":
     safety_violations["baseline"] = np.array(get_safety_violations(baseline, dmin=dmin))
     safety_violations["multimodal"] = np.array(get_safety_violations(multimodal, dmin=dmin))
     safety_violations["SEA"] = np.array(get_safety_violations(SEA, dmin=dmin))
+    n_traj = len(safety_violations["baseline"])
 
     umax = 30
     control_space = {"baseline": [], "multimodal": [], "SEA": []}
@@ -170,6 +172,11 @@ if __name__ == "__main__":
     print(f"baseline: {np.mean(safety_violations['baseline'])}")
     print(f"multimodal: {np.mean(safety_violations['multimodal'])}")
     print(f"SEA: {np.mean(safety_violations['SEA'])}")
+    print()
+    print("safety rate")
+    print(f"baseline: {(1 - (safety_violations['baseline'].sum() / (250*n_traj)))*100}")
+    print(f"multimodal: {(1 - (safety_violations['multimodal'].sum() / (250*n_traj)))*100}")
+    print(f"SEA: {(1 - (safety_violations['SEA'].sum() / (250*n_traj)))*100}")
     print()
     print("control space size")
     control_space["baseline"] = control_space["baseline"][~np.isnan(control_space["baseline"])]

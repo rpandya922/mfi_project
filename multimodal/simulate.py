@@ -441,6 +441,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
         # reset_belief = False
         # change human's goal if applicable
+        if idx > N/2:
+            h_goal = xr0[[0,1]] # follow robot
         goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
         if change_h_goal and goal_dist < 0.3:
             h_goal_reached.append(h_goal_idx)
@@ -582,7 +584,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
     # TODO: re-run with new random goals added for both agents after goals are reached
-    n_sim = 1000
+    n_sim = 100
     controllers = ["baseline", "multimodal", "SEA"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
@@ -590,7 +592,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         np.random.seed(0)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False, n_goals=4)
+            res = run_trajectory(controller=controller, plot=False, n_goals=3)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats
