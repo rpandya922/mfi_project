@@ -301,7 +301,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     # NOTE: need W to be invertible for safety controller to work
     W = np.diag([0.5, 0.01, 0.5, 0.01])
     # W = np.diag([0, 0, 0, 0])
-    h_dyn = LTI(0.1, W=W)
+    h_dyn = LTI(0.1, W=W, gamma=0.0)
     r_dyn = Unicycle(0.1, kv=2, kpsi=1.2)
     dmin = 1
     if controller == "baseline":
@@ -356,7 +356,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0003)
     # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
-    r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
+    # r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
+    r_sigma = W
     sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
 
     if plot:
@@ -441,8 +442,6 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
         # reset_belief = False
         # change human's goal if applicable
-        if idx > N/2:
-            h_goal = xr0[[0,1]] # follow robot
         goal_dist = np.linalg.norm(xh0[[0,2]] - h_goal)
         if change_h_goal and goal_dist < 0.3:
             h_goal_reached.append(h_goal_idx)
@@ -474,6 +473,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         # h_dists = np.linalg.norm(xh0[[0,2]] - goals, axis=0)
         # h_goal_idx = np.argmin(h_dists)
         h_goal = goals[:,[h_goal_idx]] # necessary for changing goals
+        # if idx > N/2:
+        #     h_goal = xr0[[0,1]]
 
         # robot's goal is closest to itself
         # r_dists = np.linalg.norm(xr0[[0,1]] - goals, axis=0)
@@ -592,7 +593,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         np.random.seed(0)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False, n_goals=3)
+            res = run_trajectory(controller=controller, plot=False, n_goals=7)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats

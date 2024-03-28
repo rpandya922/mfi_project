@@ -123,10 +123,10 @@ def plot_constraints(data):
         # input(": ")
 
 if __name__ == "__main__":
-    # filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories (used for camera ready draft on 3/15/24 at 10am)
+    filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories (used for camera ready draft on 3/15/24 at 10am)
     # filename = "./data/sim_stats_20230810-150707.pkl" # 100 traj used for paper draft results on 8/11/23
     # filename = "./data/sim_stats_20230810-201114.pkl"
-    filename = "./data/sim_stats_20240315-125255.pkl"
+    # filename = "./data/sim_stats_20240315-173925.pkl"
     with open(filename, "rb") as f:
         data = pickle.load(f)
 

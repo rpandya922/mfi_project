@@ -89,24 +89,50 @@ class MMSafety():
         # compute slack variables
         k = 3 # nominal 3-sigma bound
         epsilon = 0.003 # 99.7% confidence
-        obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s) + np.linalg.norm(k-s)
-        const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
+        val1s = np.zeros(thetas.shape[1])
+        for i in range(thetas.shape[1]):
+            theta_i = thetas[:,[i]]
+            uh_i = self.h_dyn.compute_control(xh, Ch.T @ theta_i, Cr @ xr)
+            val1s[i] = -(grad_phi_xh @ self.h_dyn.mean_dyn(xh, uh_i, 0))
+        # while testing just set k1 to initial value
+        lk1 = 0
+        rk1 = 10
+        while (rk1 - lk1) > 1e-3:
+            k1 = (lk1 + rk1) / 2
+            o1 = val1s[0] - k1*gammas[0]
+            # now we have o1 = val1s[i] - k_i*gammas[i] for all i, want to solve for k_is
+            # this means k_i = (val1s[i] - o1)/gammas[i]
+            kis = (val1s - o1)/gammas
+            kis[0] = k1
+            if belief @ chi2.cdf(kis**2, df=xh.shape[0]) > (1-epsilon):
+                rk1 = k1
+            else:
+                lk1 = k1
+        # compute final kis
+        k1 = rk1
+        o1 = val1s[0] - k1*gammas[0]
+        kis = (val1s - o1)/gammas
+        kis[0] = k1
+        slacks = k - kis
+        # import ipdb; ipdb.set_trace()
+        # obj = lambda s: self.slack_var_helper_(xh, xr, Ch, Cr, grad_phi_xh, thetas, gammas, k, s) + np.linalg.norm(k-s)
+        # # const = lambda s: (belief @ norm.cdf(k - s)) - (1-epsilon) # so it's in the form const(s) >= 0
         # const = lambda s: (belief @ chi2.cdf((k-s)**2, df=xh.shape[0])) - (1-epsilon) # multivariate normal CDF 
-        const_lb = lambda s: s # force slack variables to be positive
-        constraints = [{'type': 'ineq', 'fun': const}, {'type': 'ineq', 'fun': const_lb}]
-        if self.slacks_prev is None:
-            slack_init = np.zeros(thetas.shape[1])
-        else:
-            slack_init = self.slacks_prev
-        res = minimize(obj, slack_init, method="SLSQP", constraints={'type': 'ineq', 'fun': const}, options={"maxiter": 300})
-        # res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
+        # const_lb = lambda s: s # force slack variables to be positive
+        # constraints = [{'type': 'ineq', 'fun': const}, {'type': 'ineq', 'fun': const_lb}]
+        # if self.slacks_prev is None:
+        #     slack_init = np.zeros(thetas.shape[1])
+        # else:
+        #     slack_init = self.slacks_prev
+        # res = minimize(obj, slack_init, method="SLSQP", constraints={'type': 'ineq', 'fun': const}, options={"maxiter": 300})
+        # # res = minimize(obj, np.zeros(thetas.shape[1]), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
 
-        # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
-        # lb = 0
-        # ub = np.inf
-        # res = minimize(obj, np.zeros(thetas.shape[1]), method="trust-constr", constraints=NonlinearConstraint(const, lb, ub))
-        slacks = res.x
-        self.slacks_prev = slacks
+        # # res = minimize(obj, np.zeros(thetas.shape[1]), method="COBYLA", constraints=constraints)
+        # # lb = 0
+        # # ub = np.inf
+        # # res = minimize(obj, np.zeros(thetas.shape[1]), method="trust-constr", constraints=NonlinearConstraint(const, lb, ub))
+        # slacks = res.x
+        # self.slacks_prev = slacks
 
         # if time > 0:
         #     import ipdb; ipdb.set_trace()
@@ -267,7 +293,8 @@ class BaselineSafety():
             gammas[i] = -res.fun # negate objective value because we minimized -x^T grad_phi_xh, but wanted to maximize x^T grad_phi_xh
     
         # slack variables = 0
-        k = 3 # nominal 3-sigma bound
+        k = 4.1 # nominal 3-sigma bound
+        # TODO: solve for k based on chi squared distribution
 
         # compute safety constraint per goal
         constraints = []
@@ -913,7 +940,7 @@ class SEASafety():
         res = minimize(obj, np.zeros(4), method="SLSQP", constraints={'type': 'ineq', 'fun': const})
         gamma = -res.fun # negate objective value because we minimized -x^T grad_phi_xh, but wanted to maximize x^T grad_phi_xh
 
-        k = 3 # nominal 3-sigma bound
+        k = 4.1 # nominal 3-sigma bound
 
         # # compute xh(k+1|k) assuming most likely goal from our belief
         # uh = self.h_dyn.compute_control(xh, Ch.T @ theta, Cr @ xr)
