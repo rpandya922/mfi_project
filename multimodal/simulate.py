@@ -303,7 +303,7 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     # W = np.diag([0, 0, 0, 0])
     h_dyn = LTI(0.1, W=W, gamma=0.0)
     r_dyn = Unicycle(0.1, kv=2, kpsi=1.2)
-    dmin = 1
+    dmin = 5
     if controller == "baseline":
         safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     elif controller == "multimodal":
@@ -593,7 +593,7 @@ def simulate_all(filepath="./data/sim_stats.pkl"):
         np.random.seed(0)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False, n_goals=7)
+            res = run_trajectory(controller=controller, plot=False, n_goals=3)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats

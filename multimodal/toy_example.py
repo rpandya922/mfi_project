@@ -28,7 +28,7 @@ def plot_safety_const(ax, Lx, grad_phi_x, f_x, color="red"):
     # else:
     #     ax.fill_between(x, (-h[2]-h[0]*x)/h[1], ylim[sign], **fmt)
 
-def plot_gaussian(mean, cov):
+def plot_gaussian(ax, mean, cov):
     xs = np.linspace(0,10,100)
     ys = np.linspace(0,5,100)
 
@@ -37,11 +37,8 @@ def plot_gaussian(mean, cov):
     for i in range(X.shape[0]):
         for j in range(X.shape[1]):
             x = np.array([X[i,j], Y[i,j]])
-            Z[i,j] = multivariate_normal.pdf(x, mean, cov)
+            Z[i,j] = multivariate_normal.pdf(x, mean, cov) + multivariate_normal.pdf(x, mean + np.array([5,0]), cov)
 
-    # import ipdb; ipdb.set_trace()
-    fig, ax = plt.subplots()
-    ax.set_aspect("equal", adjustable="box")
     ax.contourf(X, Y, Z, cmap="Greens", alpha=0.5)
     k = 3.2 # mahalanobis distance for ~99.7% probability mass
     # plot k-sigma ellipse
@@ -59,7 +56,10 @@ if __name__ == "__main__":
     mean = np.array([2.5, 2.5])
     cov = np.array([[1, 0.5], [0.5, 1]])
 
-    plot_gaussian(mean, cov)
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal", adjustable="box")
+    plot_gaussian(ax, mean, cov)
+    # plot_gaussian(ax, mean + np.array([2.5,0]), cov)
 
     # plt.show()
     Lx = np.array([1, 1])

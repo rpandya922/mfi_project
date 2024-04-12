@@ -22,6 +22,16 @@ def get_safety_violations(data, dmin=1.0, print_v=False):
         safety_violations.append((np.array(data[i]["distances"]) < dmin).sum())
     return safety_violations
 
+def get_times_close(data, close=2.0, dmin=1.0):
+    close_timesteps = []
+    n_traj = len(data)
+    for i in range(n_traj):
+        times = np.where(np.array(data[i]["distances"]) < dmin)[0]
+        if len(times) > 0:
+            pass
+        close_timesteps.append(np.where(np.array(data[i]["distances"]) < dmin)[0])
+    import ipdb; ipdb.set_trace()
+
 def get_control_space_size(data, umax=30):
     control_space_size = []
     n_traj = len(data)
@@ -156,6 +166,8 @@ if __name__ == "__main__":
     safety_violations["multimodal"] = np.array(get_safety_violations(multimodal, dmin=dmin))
     safety_violations["SEA"] = np.array(get_safety_violations(SEA, dmin=dmin))
     n_traj = len(safety_violations["baseline"])
+
+    get_times_close(baseline, dmin=2.0)
 
     umax = 30
     control_space = {"baseline": [], "multimodal": [], "SEA": []}
