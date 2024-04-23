@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tikzplotlib
 from scipy.stats import entropy
+import os
 
 from dynamics import DIDynamics
 from bayes_inf import BayesEstimator, BayesHuman
@@ -140,7 +141,7 @@ def chattering_goals(reward="kl"):
         # for goal_idx in range(r_beliefs_nominal.shape[1]):
         #     h_goal_ax.plot(r_beliefs_nominal[:,goal_idx], c=goal_colors[goal_idx], linestyle="--")
 
-        # plt.pause(0.01)
+        plt.pause(0.01)
 
         # if h_goal_reached and r_goal_reached:
         #     # stop early if both goals are reached
@@ -286,8 +287,11 @@ def cbp_probs(reward="kl"):
     plt.show()
 
 def influence_objective(mode="with_robot"):
-    np.random.seed(0)
-
+    # np.random.seed(0) # paper figure
+    # w2 = 0.9
+    np.random.seed(10) # for thesis proposal figure
+    w2 = 4
+    
     ts = 0.1
     # simulate for T seconds
     N = int(5 / ts)
@@ -299,6 +303,7 @@ def influence_objective(mode="with_robot"):
     goals = np.random.uniform(-10, 10, (4, 3))
     goals[[1,3]] = 0
     r_goal = goals[:,[2]] # this is arbitrary since it'll be changed in simulations later anyways
+    closest_goal_idx = np.argmin(np.linalg.norm(goals - xr0, axis=0))
 
     # create human and robot objects
     # W = np.diag([0.0, 0.7, 0.0, 0.7])
@@ -332,6 +337,10 @@ def influence_objective(mode="with_robot"):
         else:
             uh = human.get_u(-100*np.ones((4,1)))
 
+        # for thesis proposal vid creation (used 0.6 for influence, 0.85 for naive)
+        if np.amax(h_belief.belief) < 0.85:
+            uh = np.zeros((2,1))
+
         # update robot's nominal belief
         r_belief_nominal.belief, likelihoods = r_belief_nominal.update_belief(human.x, uh, return_likelihood=True)
         r_belief_prior = r_belief_nominal.belief
@@ -342,7 +351,7 @@ def influence_objective(mode="with_robot"):
         for goal_idx in range(goals.shape[1]):
             goal = goals[:,[goal_idx]]
             # compute CBP belief update
-            r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5)
+            r_belief_post = r_belief.weight_by_score(r_belief_prior, goal, xh_next, beta=0.5, w2=w2)
             posts.append(r_belief_post)
 
         # pick goal with highest probability on human's most likely goal
@@ -357,6 +366,7 @@ def influence_objective(mode="with_robot"):
             goal_scores.append(h_belief_score + goal_change_score)
         goal_idx = np.argmin(goal_scores)
         robot.goal = goals[:,[goal_idx]]
+        # robot.goal = goals[:,[closest_goal_idx]]
 
 
         if mode == "with_robot":
@@ -406,10 +416,17 @@ def influence_objective(mode="with_robot"):
         ax.scatter(xh0[0], xh0[2], c="blue", s=150)
         ax.scatter(goals[0], goals[2], c=goal_colors, s=150)
         ax.set_xlim(-10, 10)
-        ax.set_ylim(-10, 0)
+        # ax.set_ylim(-10, 0)
+        ax.set_ylim(-10, 10)
         ax.set_aspect("equal", "box")
 
-        plt.pause(0.01)
+        # save images to make video
+        # filepath = f"./data/videos/influence_objective/frames2/{idx:03d}.png"
+        filepath = f"./data/videos/thesis_proposal/naive_wait/{idx:03d}.png"
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        plt.savefig(filepath, dpi=300)
+        
+        # plt.pause(0.01)
 
     plt.show()
 
@@ -418,6 +435,6 @@ if __name__ == "__main__":
     # chattering_goals("kl")
 
     # influence_objective("no_robot")
-    # influence_objective("with_robot")
+    influence_objective("with_robot")
 
-    cbp_probs("max")
+    # cbp_probs("max")

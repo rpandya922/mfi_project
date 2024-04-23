@@ -107,14 +107,20 @@ def plot_obj_selection(user_ids):
             obj_idxs = [obj_to_idx[obj] for obj in objectives]
             all_objectives.append(obj_idxs)
 
-def plot_traj(user_id):
+def plot_traj(user_id, robot_types=None, game_idxs=None):
     user_data = load_user_data(user_id)
-    robot_types = ["baseline", "baseline_belief", "cbp"]
+    if robot_types is None:
+        robot_types = ["baseline", "baseline_belief", "cbp"]
+    if game_idxs is None:
+        game_idxs = [1]
     robot_colors = {"baseline": "brown", "baseline_belief": "purple", "cbp": "green"}
     robot_cmaps = {"baseline": "copper_r", "baseline_belief": "Purples", "cbp": "Greens"}
+    
+    goal_colors = ["#3A637B", "#C4A46B", "#FF5A00"]
 
     for robot in robot_types:
-        for game_idx in range(len(user_data[robot])):
+        # for game_idx in range(len(user_data[robot])):
+        for game_idx in game_idxs:
             data = user_data[robot][game_idx]
             # plot human trajectory
             xh_traj = data["xh_traj"]
@@ -128,17 +134,25 @@ def plot_traj(user_id):
                 if i > 50:
                     xh_traj_i = xh_traj[:,i-50:i+1]
                     xr_traj_i = xr_traj[:,i-50:i+1]
+                    break
                 else:
                     xh_traj_i = xh_traj[:,:i+1]
                     xr_traj_i = xr_traj[:,:i+1]
                 overlay_timesteps(ax, xh_traj_i, xr_traj_i, n_steps=50, r_cmap=robot_cmaps[robot])
-                ax.scatter(xh_traj[0,i], xh_traj[2,i], c="blue")
-                ax.scatter(xr_traj[0,i], xr_traj[2,i], c=robot_colors[robot])
+                ax.scatter(xh_traj[0,i], xh_traj[2,i], c="blue", s=150)
+                ax.scatter(xr_traj[0,i], xr_traj[2,i], c=robot_colors[robot], s=150)
                 goals_i = goals[:,:,i]
-                ax.scatter(goals_i[0], goals_i[2], c="green")
+                ax.scatter(goals_i[0], goals_i[2], c=goal_colors, s=150, marker="x")
                 ax.set_xlim(-11, 11)
                 ax.set_ylim(-11, 8.5)
                 ax.set_aspect("equal")
+
+                # save images to make videos
+                # filepath = f"./data/videos/user_study/frames_{user_id}_{robot}_{game_idx}/{i:03d}.png"
+                # filepath = f"./data/videos/thesis_proposal/study_uncertain/{i:03d}.png"
+                # os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                # plt.savefig(filepath, dpi=300)
+
                 plt.pause(0.01)
             input(": ")
 
@@ -360,3 +374,11 @@ if __name__ == "__main__":
     # plot_obj_selection(user_ids)
 
     load_survey_results(user_ids)
+    # plot_traj(user_ids[2])
+    # plot_traj(user_ids[15])
+
+    # plot_traj(user_ids[15], robot_types=["cbp"]) # saved with game_idx = 1
+    # plot_traj(user_ids[2], robot_types=["cbp"])
+    # plot_traj(user_ids[4], robot_types=["cbp"], game_idxs=[2]) # for thesis proposal: maybe 12 game_idx 1 to show how CBP is flexible (i.e. human picks other goal, CBP decides courtesy)
+    # game_idx = 2; user_ids[0] is a good one (robot initially tries to influence, but realizes person isnt influencable so picks closer goal)
+    # game_idx = 2; user_ids[4] is a good second example -- robot clearly influences them to choose an efficient goal
