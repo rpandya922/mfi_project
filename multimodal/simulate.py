@@ -290,7 +290,7 @@ def compute_bounding_ellipse(h_dyn, xh0, xr0, Ch, Cr, sigmas, goals):
 
     return c_enclose, sigma_enclose
 
-def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=True, n_goals=5):
+def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=True, n_goals=5, eta=0.5, k_phi=5):
 # def visualize_uncertainty():
     # for computing cartesian position difference
     Ch = np.array([[1, 0, 0, 0],
@@ -299,17 +299,20 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
                     [0, 1, 0, 0]]) # mapping robot state to [x, y]
     
     # NOTE: need W to be invertible for safety controller to work
-    W = np.diag([0.5, 0.01, 0.5, 0.01])
+    W = np.diag([0.5, 0.1, 0.5, 0.1])
     # W = np.diag([0, 0, 0, 0])
     h_dyn = LTI(0.1, W=W, gamma=0.0)
     r_dyn = Unicycle(0.1, kv=2, kpsi=1.2)
-    dmin = 5
+    dmin = 3.0
     if controller == "baseline":
-        safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = BaselineSafety(r_dyn, h_dyn, dmin=dmin, eta=eta, k_phi=k_phi)
     elif controller == "multimodal":
-        safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = MMSafety(r_dyn, h_dyn, dmin=dmin, eta=eta, k_phi=k_phi)
     elif controller == "SEA":
-        safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
+        safe_controller = SEASafety(r_dyn, h_dyn, dmin=dmin, eta=eta, k_phi=k_phi)
+    elif controller == "reference":
+        # ur_safe, phi, safety_active, slacks, Ls, Ss = safe_controller(xr0, xh0, ur_ref, goals, belief.belief, sigmas, return_slacks=True, time=idx, ax=None, return_constraints=True)
+        safe_controller = lambda xr, xh, ur_ref, goals, belief, sigmas, return_slacks, time, ax, return_constraints: (ur_ref, 0, False, np.zeros(3), [], [])
 
     # safe_controller = MMLongTermSafety(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
     # safe_controller = BaselineSafetySamples(r_dyn, h_dyn, dmin=dmin, eta=0.5, k_phi=5)
@@ -346,14 +349,23 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
     xr0 = np.random.uniform(-10, 10, (4,1))
     xr0[[2,3]] = np.zeros((2,1))
     # xr0 = np.array([[-5, 0, -5, 0]]).T
+    # make sure initial conditions are not in collision
+    while np.linalg.norm((Cr@xr0) - (Ch@xh0)) < dmin:
+        xh0 = np.random.uniform(-10, 10, (4,1))
+        xh0[[1,3]] = np.zeros((2,1))
+        xr0 = np.random.uniform(-10, 10, (4,1))
+        xr0[[2,3]] = np.zeros((2,1))
+
     distances.append(np.linalg.norm((Cr@xr0) - (Ch@xh0)))
 
-    T = 25 # in seconds
+    # T = 25 # in seconds
+    T = 70
     N = int(T / h_dyn.ts)
 
     # robot's belief about the human's goal
     prior = np.ones(goals.shape[1]) / goals.shape[1]
     belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0003)
+    # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=0.0006)
     # belief = BayesEstimator(Ch.T @ goals, h_dyn, prior=prior, beta=1e-6)
     beliefs = prior
     # r_sigma = np.diag([0.7, 0.01, 0.3, 0.01])
@@ -458,6 +470,11 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
         if goal_dist < 0.3:
             r_goal_reached.append(r_goal_idx)
             r_goal = np.random.uniform(-10, 10, 2)
+            hr_goal_dists = np.linalg.norm(r_goal.reshape(-1,1) - goals, axis=0)
+            while np.amin(hr_goal_dists) < dmin:
+                r_goal = np.random.uniform(-10, 10, 2)
+                hr_goal_dists = np.linalg.norm(r_goal.reshape(-1,1) - goals, axis=0)
+
             # goals[:,[r_goal_idx]] = np.random.uniform(-10, 10, (2, 1))
             # r_goal_idx = (r_goal_idx + 1) % goals.shape[1]
             # r_goal_idx = np.random.randint(0, goals.shape[1])
@@ -465,6 +482,8 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
             # reset_belief = True
         else:
             r_goal_reached.append(-1)
+        # r_goal = xh0[[0,2]]
+        r_goal = h_goal # used for follower robot simulations
 
         # if reset_belief:
         #     belief.belief = np.ones(n_goals) / n_goals
@@ -585,15 +604,18 @@ def run_trajectory(controller : str = "multimodal", change_h_goal = True, plot=T
 
 def simulate_all(filepath="./data/sim_stats.pkl"):
     # TODO: re-run with new random goals added for both agents after goals are reached
+    eta = 2
+    k_phi = 10
+    # k_phi = 5
     n_sim = 100
-    controllers = ["baseline", "multimodal", "SEA"]
+    # controllers = ["baseline", "multimodal", "SEA", "reference"]
+    controllers = ["reference"]
     all_stats = {controller: [] for controller in controllers}
     for controller in controllers:
-        # np.random.seed(4)
-        np.random.seed(0)
+        np.random.seed(4)
         controller_stats = []
         for i in tqdm(range(n_sim)):
-            res = run_trajectory(controller=controller, plot=False, n_goals=3)
+            res = run_trajectory(controller=controller, plot=False, n_goals=3, eta=eta, k_phi=k_phi)
             controller_stats.append(res)
         # save stats
         all_stats[controller] = controller_stats
@@ -607,3 +629,4 @@ if __name__ == "__main__":
     # run_trajectory(controller="multimodal", n_goals=3)
     filepath = f"./data/sim_stats_{time.strftime('%Y%m%d-%H%M%S')}.pkl"
     simulate_all(filepath)
+    print(f"saved to {filepath}")

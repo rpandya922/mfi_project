@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -539,8 +540,138 @@ def plot_traj():
     #     plt.pause(0.001)
     # plt.show()
 
+def plot_traj_proposal(filename="./data/sim_stats_20240413-164419.pkl", dmin=3.0, controller="baseline", traj_idx=0, vid_folder=""):
+    if vid_folder != "":
+        os.makedirs(vid_folder, exist_ok=True)
+    with open(filename, "rb") as f:
+        all_data = pickle.load(f)
+    data = all_data[controller]
+    traj_data = data[traj_idx]
+
+    Ch = np.array([[1, 0, 0, 0],
+                    [0, 0, 1, 0]]) # mapping human state to [x, y]
+    Cr = np.array([[1, 0, 0, 0],
+                    [0, 1, 0, 0]]) # mapping robot state to [x, y]
+    W = np.diag([0.5, 0.1, 0.5, 0.1])
+    # W = np.diag([0, 0, 0, 0])
+    h_dyn = LTI(0.1, W=W)
+
+    fig, ax = plt.subplots()
+    xh_traj = np.array(traj_data["xh_traj"])
+    xr_traj = np.array(traj_data["xr_traj"])
+    beliefs = np.array(traj_data["beliefs"])
+    all_slacks = np.array(traj_data["all_slacks"])
+    goals = np.array(traj_data["goals"])
+    r_goals = np.array(traj_data["r_goals"]).squeeze()
+
+    r_sigma = W
+    sigmas_init = [r_sigma.copy() for _ in range(goals.shape[1])]
+    goal_colors_init = ["#3A637B", "#C4A46B", "#FF5A00"]
+
+    for i in range(min(xh_traj.shape[1]-1, 250)):
+        r_goal = r_goals[i]
+        slacks = all_slacks[i]
+        belief = beliefs[i]
+        ax.clear()
+        ax.scatter(xh_traj[0,i], xh_traj[2,i], label="human", c="blue", s=100)
+        heading = xr_traj[3,i]
+        ax.scatter(xr_traj[0,i], xr_traj[1,i], c="red", marker=(3, 0, 180*heading/np.pi+30), s=150)
+        i_min = max(0, i-50)
+        overlay_timesteps(ax, xh_traj[:,i_min:i+1], xr_traj[:,i_min:i+1], n_steps=i)
+
+        ax.scatter(goals[0], goals[1], c=goal_colors_init, s=200)
+        ax.scatter([r_goal[0]], [r_goal[1]], marker="x", c="k", s=200)
+
+        # plot dmin circle around human
+        circle = plt.Circle((xh_traj[0,i], xh_traj[2,i]), dmin, color="black", fill=False, linestyle="--")
+        ax.add_artist(circle)
+
+        # compute covariance matrix that's in the direction of the goal
+        xh0 = xh_traj[:,[i]]
+        xr0 = xr_traj[:,[i]]
+        # compute covariance matrix that's in the direction of the goal
+        sigmas = []
+        for goal_idx in range(goals.shape[1]):
+            # compute angle between human and goal
+            goal = goals[:,[goal_idx]]
+            # compute human's next state wrt this goal
+            uh_goal = h_dyn.compute_control(xh0, Ch.T @ goal, Cr @ xr0)
+            xh_next = h_dyn.step_mean(xh0, uh_goal)
+            angle = np.arctan((goal[1,0] - xh_next[2,0])/(goal[0,0] - xh_next[0,0]))
+            # angle = np.arctan((goal[1,0] - xh0[2,0])/(goal[0,0] - xh0[0,0]))
+            # compute covariance matrix from sigmas[goal_idx] rotated by angle
+            sigma = sigmas_init[goal_idx][[0,2]][:,[0,2]]
+            R = np.array([[np.cos(angle), -np.sin(angle)],
+                            [np.sin(angle), np.cos(angle)]])
+            sigma_rot = R @ sigma @ R.T
+            # set x & y components of sigmas[goal_idx] to sigmas_rot
+            sigma_new = sigmas_init[goal_idx].copy()
+            sigma_new[0,0] = sigma_rot[0,0]
+            sigma_new[0,2] = sigma_rot[0,1]
+            sigma_new[2,0] = sigma_rot[1,0]
+            sigma_new[2,2] = sigma_rot[1,1]
+            sigmas.append(sigma_new)
+
+        if controller == "SEA":
+            # only plot most likely mode's ellipse
+            max_i = np.argmax(belief)
+            sigmas = [sigmas[max_i]]
+            goal_colors = [goal_colors_init[max_i]]
+            k_sigmas = 4.002 - slacks
+            # k_sigmas = 3 - slacks
+        else:
+            goal_colors = goal_colors_init
+            k_sigmas = 3 - slacks # just bc of how slacks are computed 
+        
+        for idx, sigma in enumerate(sigmas):
+            k = k_sigmas[idx]
+            # compute k-sigma ellipse
+            sigma = sigma[[0,2]][:,[0,2]]
+            eigenvalues, eigenvectors = np.linalg.eig(sigma)
+            sqrt_eig = np.sqrt(eigenvalues)
+            # use only xy components
+            # sqrt_eig = sqrt_eig[[0,2]]
+            # eigenvectors = eigenvectors[:,[0,2]]
+            # compute angle of ellipse
+            theta = np.arctan(eigenvectors[1,0]/eigenvectors[0,0])
+            # compute human's next state wrt this goal
+            uh_i = h_dyn.compute_control(xh0, Ch.T @ goals[:,[idx]], Cr @ xr0)
+            xh_next = h_dyn.step_mean(xh0, uh_i)
+            # compute ellipse
+            ellipse = Ellipse(xy=Ch@xh_next, width=2*k*sqrt_eig[0], height=2*k*sqrt_eig[1], angle=np.rad2deg(theta), alpha=0.2, color=goal_colors[idx])
+            ax.add_patch(ellipse)
+
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(-10, 10)
+        ax.set_ylim(-10, 10)
+
+        # save images to make videos
+        filepath = f"{vid_folder}/{i:03d}.png"
+        plt.savefig(filepath, dpi=300)
+
+        # plt.pause(0.001)
+    framerate = 10
+    os.system(f"ffmpeg -framerate {framerate} -i {vid_folder}%03d.png -pix_fmt yuv420p {vid_folder}out.mp4 -y")
+    os.system(f"rm -rf {vid_folder}/*.png")
+
+    plt.show()
+
 if __name__ == "__main__":
-    plot_control_space()
+    # plot_control_space()
     # plot_bayes_inf()
     # plot_front_figure()
     # plot_traj()
+
+    # follower robot
+    # filename = "./data/sim_stats_20240413-164419.pkl"
+    # dmin = 3.0
+    # controller = "SEA"
+    # traj_idx = 2
+    # vid_folder = "./data/videos/thesis_proposal/SEA_following/"
+    # normal robot
+    filename = "./data/sim_stats_20240413-214340.pkl"
+    dmin = 1.5
+    controller = "multimodal"
+    traj_idx = 0 # for some reason goals are different per controller except traj 0?
+    vid_folder = "./data/videos/thesis_proposal/multimodal_normal/"
+    plot_traj_proposal(filename=filename, dmin=dmin, controller=controller, traj_idx=traj_idx, vid_folder=vid_folder)

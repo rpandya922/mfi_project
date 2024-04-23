@@ -1,4 +1,6 @@
 import numpy as np
+import pandas as pd
+import pingouin as pg
 import matplotlib.pyplot as plt
 import pickle
 from tqdm import tqdm
@@ -133,10 +135,13 @@ def plot_constraints(data):
         # input(": ")
 
 if __name__ == "__main__":
-    filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories (used for camera ready draft on 3/15/24 at 10am)
+    # filename = "./data/sim_stats_20230804-184019.pkl" # big file w/ 1000 trajectories (used for camera ready draft on 3/15/24 at 10am)
     # filename = "./data/sim_stats_20230810-150707.pkl" # 100 traj used for paper draft results on 8/11/23
     # filename = "./data/sim_stats_20230810-201114.pkl"
     # filename = "./data/sim_stats_20240315-173925.pkl"
+    filename = "./data/sim_stats_20240413-164419.pkl" # traj with follower robot on 4/13/24, eta=2, k_phi=10, dmin=3
+    # filename = "./data/sim_stats_20240413-214340.pkl" # traj with normal robot on 4/13/24, eta=2, k_phi=5, dmin=1.5
+    # filename = "./data/sim_stats_20240417-213542.pkl"
     with open(filename, "rb") as f:
         data = pickle.load(f)
 
@@ -150,7 +155,7 @@ if __name__ == "__main__":
     baseline = data["baseline"]
     multimodal = data["multimodal"]
     SEA = data["SEA"]
-    
+    # SEA = data["reference"]
     # plot_constraints(baseline[0])
     # plot_constraints(multimodal[0])
     # plt.show()
@@ -160,14 +165,14 @@ if __name__ == "__main__":
     goals_reached["multimodal"] = np.array(get_r_goals_reached(multimodal))
     goals_reached["SEA"] = np.array(get_r_goals_reached(SEA))
     
-    dmin = 1.0
+    dmin = 3.0
     safety_violations = {"baseline": [], "multimodal": [], "SEA": []}
     safety_violations["baseline"] = np.array(get_safety_violations(baseline, dmin=dmin))
     safety_violations["multimodal"] = np.array(get_safety_violations(multimodal, dmin=dmin))
     safety_violations["SEA"] = np.array(get_safety_violations(SEA, dmin=dmin))
-    n_traj = len(safety_violations["baseline"])
+    n_traj = len(safety_violations["SEA"])
 
-    get_times_close(baseline, dmin=2.0)
+    # get_times_close(baseline, dmin=2.0)
 
     umax = 30
     control_space = {"baseline": [], "multimodal": [], "SEA": []}
@@ -176,9 +181,18 @@ if __name__ == "__main__":
     control_space["SEA"] = np.array(get_control_space_size(SEA, umax=umax))
 
     print("goals reached")
-    print(f"baseline: {np.mean(goals_reached['baseline'])}, {np.median(goals_reached['baseline'])}")
-    print(f"multimodal: {np.mean(goals_reached['multimodal'])}, {np.median(goals_reached['multimodal'])}")
-    print(f"SEA: {np.mean(goals_reached['SEA'])}, {np.median(goals_reached['SEA'])}")
+    print(f"baseline: {np.mean(goals_reached['baseline'])}, {np.std(goals_reached['baseline'])}")
+    print(f"multimodal: {np.mean(goals_reached['multimodal'])}, {np.std(goals_reached['multimodal'])}")
+    print(f"SEA: {np.mean(goals_reached['SEA'])}, {np.std(goals_reached['SEA'])}")
+    # make data into dataframe, then run anova 
+    df = pd.DataFrame(goals_reached)
+    df_ = pd.melt(df, var_name="robot_type", value_name="team_score")
+    df_["init_cond"] = df_.groupby(df_["robot_type"]).cumcount()
+    aov = pg.rm_anova(dv="team_score", within=["robot_type"], subject="init_cond", data=df_, correction=True)
+    print(aov)
+    post_hoc = pg.pairwise_tests(data=df_, dv="team_score", within="robot_type", subject="init_cond", padjust="bonf", effsize="cohen")
+    print(post_hoc)
+
     print()
     print("safety violations")
     print(f"baseline: {np.mean(safety_violations['baseline'])}")
@@ -186,17 +200,28 @@ if __name__ == "__main__":
     print(f"SEA: {np.mean(safety_violations['SEA'])}")
     print()
     print("safety rate")
-    print(f"baseline: {(1 - (safety_violations['baseline'].sum() / (250*n_traj)))*100}")
-    print(f"multimodal: {(1 - (safety_violations['multimodal'].sum() / (250*n_traj)))*100}")
-    print(f"SEA: {(1 - (safety_violations['SEA'].sum() / (250*n_traj)))*100}")
+    traj_len = SEA[0]["xh_traj"].shape[1]
+    print(f"baseline: {(1 - (safety_violations['baseline'].sum() / (traj_len*n_traj)))*100}")
+    print(f"multimodal: {(1 - (safety_violations['multimodal'].sum() / (traj_len*n_traj)))*100}")
+    print(f"SEA: {(1 - (safety_violations['SEA'].sum() / (traj_len*n_traj)))*100}")
     print()
+
     print("control space size")
-    control_space["baseline"] = control_space["baseline"][~np.isnan(control_space["baseline"])]
-    control_space["multimodal"] = control_space["multimodal"][~np.isnan(control_space["multimodal"])]
-    control_space["SEA"] = control_space["SEA"][~np.isnan(control_space["SEA"])]
-    print(f"baseline: {np.mean(control_space['baseline'])}")
-    print(f"multimodal: {np.mean(control_space['multimodal'])}")
-    print(f"SEA: {np.mean(control_space['SEA'])}")
+    control_space_ = {}
+    control_space_["baseline"] = control_space["baseline"][~np.isnan(control_space["baseline"])]
+    control_space_["multimodal"] = control_space["multimodal"][~np.isnan(control_space["multimodal"])]
+    control_space_["SEA"] = control_space["SEA"][~np.isnan(control_space["SEA"])]
+    print(f"baseline: {np.mean(control_space_['baseline'])}, {np.std(control_space_['baseline'])}")
+    print(f"multimodal: {np.mean(control_space_['multimodal'])}, {np.std(control_space_['multimodal'])}")
+    print(f"SEA: {np.mean(control_space_['SEA'])}, {np.std(control_space_['SEA'])}")
+    # make data into dataframe, then run anova 
+    df = pd.DataFrame(control_space) # use original data with nans so we have same number of samples for each
+    df_ = pd.melt(df, var_name="robot_type", value_name="team_score")
+    df_["init_cond"] = df_.groupby(df_["robot_type"]).cumcount()
+    aov = pg.rm_anova(dv="team_score", within=["robot_type"], subject="init_cond", data=df_, correction=True)
+    print(aov)
+    post_hoc = pg.pairwise_tests(data=df_, dv="team_score", within="robot_type", subject="init_cond", padjust="bonf", effsize="cohen")
+    print(post_hoc)
 
     # make box and whisker plot
     fig, ax = plt.subplots()
@@ -204,7 +229,7 @@ if __name__ == "__main__":
     # ax.set_xticklabels(["baseline", "multimodal", "SEA"])
     # ax.set_ylabel("goals reached")
 
-    ax.boxplot([control_space["baseline"], control_space["multimodal"], control_space["SEA"]], showmeans=True)
+    ax.boxplot([control_space_["baseline"], control_space_["multimodal"], control_space_["SEA"]], showmeans=True)
     ax.set_xticklabels(["baseline", "multimodal", "SEA"])
     ax.set_ylabel("control space size")
     plt.show()
